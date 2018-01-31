@@ -17,6 +17,8 @@ executable kv-service-exe
   hs-source-dirs:      app, app/gen-hs
   main-is:             KVService.hs
   other-modules:       Kvstore.KeyValueService
+                     , Kvstore.Cache
+                     , Kvstore.KVSTypes
                      , KeyValueStore
                      , KeyValueStore_Iface
                      , KeyValueStore_Client
