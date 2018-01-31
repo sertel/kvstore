@@ -1,0 +1,6 @@
+*.a
+*.so
+*.o
+*.hi
+.stack-work/
+*.dump-simpl
