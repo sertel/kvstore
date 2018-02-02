@@ -106,7 +106,9 @@ handleReq (KVRequest op table key fields recordCount values) = do
 
 execRequests :: (DB.DB_Iface a, SerDe b) => (Vector.Vector KVRequest) -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
 execRequests reqs = do
+  -- cache management first
   refreshCache reqs
+  -- request handling afterwards
   responses <- mapM handleReq =<< return reqs
   return responses
 
