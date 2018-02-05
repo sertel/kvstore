@@ -6,6 +6,7 @@ import Test.Framework.Providers.HUnit
 
 import qualified Data.Text.Lazy         as T
 import qualified Data.HashMap.Strict    as HM
+import qualified Data.Vector            as V
 import           Data.Maybe
 
 import qualified DB_Iface               as DB
@@ -27,6 +28,13 @@ instance DB.DB_Iface MockDB where
 
 simpleTest :: Assertion
 simpleTest = do
+  let
+    req = HM.singleton "table-0" $ HM.singleton "key-0" $ HM.singleton "field-0" "value-0"
+    reqs = V.singleton req
+    (responses, state) = runIO . (runStateT (execRequests req)) $ KVSState
+                                                                    KVStore
+                                                                    MockDB
+
   -- let (result,state) = runOhuaM (simpleComposition 333 10) [0,0]
   -- assertEqual "result was wrong." 36 result
   -- assertEqual "state was wrong." [2,3] state

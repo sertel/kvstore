@@ -4,25 +4,17 @@ module Kvstore.Cache where
 
 import           Kvservice_Types
 
-import qualified Data.Text.Lazy         as T
+import qualified Data.Text.Lazy          as T
+import qualified Data.ByteString.Lazy    as BS
 import           Control.Monad.State
-import qualified Data.Vector            as Vector
-import qualified Data.HashMap.Strict    as Map
+import qualified Data.Vector             as Vector
+import qualified Data.HashMap.Strict     as Map
 import           Data.Maybe
 
-import qualified DB_Iface               as DB
+import qualified DB_Iface                as DB
 import           Kvstore.KVSTypes
+import           Kvstore.InputOutput
 
-loadTable :: DB.DB_Iface a => T.Text -> StateT (KVSState a b) IO T.Text
-loadTable tableId = do
-  (KVSState _ db _) <- get
-  serializedValTable <- liftIO $ DB.get db tableId
-  return serializedValTable
-
-deserializeTable :: SerDe b => T.Text -> StateT (KVSState a b) IO Table
-deserializeTable serializedTable = do
-  (KVSState _ _ serializer) <- get
-  return $ deserialize serializer serializedTable
 
 loadCacheEntry :: (DB.DB_Iface a, SerDe b) => T.Text -> StateT (KVSState a b) IO (T.Text, Table)
 loadCacheEntry tableId = do
@@ -45,8 +37,8 @@ updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
       let kvs' = Map.insert tableId valTable kvs
       put $ KVSState kvs' db serde
 
-refreshCache :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
-refreshCache reqs = do
+refresh :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
+refresh reqs = do
   let readsAndScans = Vector.filter findReadsAndScans reqs
   let reads_ = Vector.map kVRequest_table readsAndScans
   newEntriesFromReads <- mapM loadCacheEntry reads_
@@ -74,3 +66,42 @@ refreshCache reqs = do
         -- also: adding something to the cache before it was written to stable storage might result in
         --       an inconsistent state. -> we need to require the backend to always be able to write successfully!
         False -- TODO
+
+update :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a b) IO KVResponse
+update table key Nothing = update table key $ Just Map.empty
+update table key (Just values) = do
+   (KVSState tables db serde) <- get
+   case (Map.lookup table tables) of
+     Nothing -> return $ KVResponse UPDATE Nothing Nothing $ Just $ T.pack "no such table!"
+     (Just valTable) -> do
+       case (Map.lookup key valTable) of
+         Nothing -> return $ KVResponse UPDATE Nothing Nothing $ Just $ T.pack "no such key!"
+         (Just fields) -> do
+           let fields' =  Map.union values fields
+           let valTable' = Map.insert key fields' valTable
+           let kvs' = Map.insert table valTable' tables
+           put $ KVSState kvs' db serde
+           return $ KVResponse UPDATE (Just Map.empty) Nothing Nothing
+
+insert :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a b) IO KVResponse
+insert table key Nothing = insert table key $ Just Map.empty
+insert table key (Just values) = do
+   (KVSState kvs db serde) <- get
+   case (Map.lookup table kvs) of
+     Nothing -> return $ KVResponse INSERT Nothing Nothing $ Just $ T.pack "no such table!"
+     (Just valTable) -> do
+                          let valTable' = Map.insert key values valTable
+                          let kvs' = Map.insert table valTable' kvs
+                          put $ KVSState kvs' db serde
+                          return $ KVResponse INSERT (Just Map.empty) Nothing Nothing
+
+delete :: T.Text -> T.Text -> StateT (KVSState a b) IO KVResponse
+delete table key = do
+  (KVSState kvs db serde) <- get
+  case (Map.lookup table kvs) of -- probably something that should be done even before request processing
+    Nothing -> return $ KVResponse DELETE Nothing Nothing $ Just $ T.pack "no such table!"
+    (Just valTable) -> do
+                         let valTable' = Map.delete key valTable
+                         let kvs' = Map.adjust (\_ -> valTable') key kvs
+                         put $ KVSState kvs' db serde
+                         return $ KVResponse DELETE Nothing Nothing Nothing

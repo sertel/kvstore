@@ -3,10 +3,12 @@
 module Kvstore.KVSTypes where
 
 import qualified Data.Text.Lazy         as T
+import qualified Data.ByteString.Lazy   as BS
 import qualified Data.HashMap.Strict    as Map
 import           Data.IORef
 
 import qualified DB_Iface               as DB
+import           GHC.Generics
 
 
 type Fields = Map.HashMap T.Text T.Text
@@ -14,12 +16,12 @@ type Table = Map.HashMap T.Text Fields
 type KVStore = Map.HashMap T.Text Table
 
 class SerDe a where
-  serialize :: a -> Table -> T.Text
-  deserialize :: a -> T.Text -> Table
+  serialize :: a -> Table -> BS.ByteString
+  deserialize :: a -> BS.ByteString -> Table
 
 class Compression a where
-  compress :: a -> T.Text -> T.Text
-  decompress :: a -> T.Text -> T.Text
+  compress :: a -> BS.ByteString -> BS.ByteString
+  decompress :: a -> BS.ByteString -> BS.ByteString
 
 data KVSState a b = KVSState {
                   getKvs :: KVStore -- the cache (kv-store)
