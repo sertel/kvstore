@@ -12,6 +12,8 @@ import           Data.IORef
 import qualified Data.Vector             as Vector
 import           Data.Maybe
 import           Data.Int
+import qualified Data.List               as List
+import           Data.Function
 
 import           Kvstore.KVSTypes
 import qualified Kvstore.Cache           as Cache
@@ -44,19 +46,14 @@ scan table key (Just recordCount) = do
   case (HM.lookup table tables) of
     Nothing -> return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
     (Just valTable) -> do
-                        let collected = collect recordCount $ HM.toList valTable
+                        let collected = (Vector.fromList . collect . List.sortBy (compare `on` fst) . HM.toList) valTable
+                        traceM $ "table: " ++ show valTable
+                        traceM $ "collected values: " ++ show collected
                         return $ KVResponse SCAN Nothing (Just collected) Nothing
   where
-    collect remaining [] = Vector.empty
-    collect remaining ((k,v):xs) = if remaining >= recordCount
-                                    then -- did not gather anything yet
-                                      if k == key
-                                        then Vector.singleton v Vector.++ collect (remaining - 1) xs
-                                        else collect remaining xs
-                                    else -- already gathering values
-                                      if remaining > 0
-                                        then Vector.singleton v Vector.++ collect (remaining - 1) xs
-                                        else Vector.empty
+    collect [] = []
+    collect a@((k,v):xs) | k == key = (map snd . take (fromIntegral recordCount)) a
+                         | otherwise = collect xs
 
 update :: (DB.DB_Iface a, SerDe b) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a b) IO KVResponse
 update table key Nothing = update table key $ Just HM.empty

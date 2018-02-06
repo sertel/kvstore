@@ -116,7 +116,7 @@ readEntry table key field = (execRequests . V.singleton)
                             $ KVRequest READ
                                         (T.pack table)
                                         (T.pack key)
-                                        (Just $ Set.fromList [T.pack "field-0"])
+                                        (Just $ Set.fromList [T.pack field])
                                         Nothing
                                         Nothing
 
@@ -138,6 +138,47 @@ singleRead = do
                                       $ HM.singleton (T.pack "field-0") (T.pack "value-0"))
                                       $ getKvs s'
 
+scanEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
+scanEntry table key field = (execRequests . V.singleton)
+                            $ KVRequest SCAN
+                                        (T.pack table)
+                                        (T.pack key)
+                                        (Just $ Set.fromList [T.pack field])
+                                        (Just 3)
+                                        Nothing
+
+singleScan :: Assertion
+singleScan = do
+  s <- initState
+  (responses, s') <- flip runStateT s $ do
+                                mapM ((\i -> insertEntry ("table-0") ("key-"++i) "field-0" ("value-"++i)) . show) [0,1..5]
+                                scanEntry "table-0" "key-1" "field-0"
+  -- traceM $ "responses: " ++ show responses
+  -- traceM $ "kvs: " ++ (show $ getKvs s')
+  db' <- readIORef $ getDbBackend s'
+  -- traceM $ "db: " ++ show db'
+  assertEqual "wrong response." (V.singleton $ KVResponse
+                                                  SCAN
+                                                  Nothing
+                                                  (Just $ V.fromList [ HM.singleton (T.pack "field-0") (T.pack "value-1")
+                                                                     , HM.singleton (T.pack "field-0") (T.pack "value-2")
+                                                                     , HM.singleton (T.pack "field-0") (T.pack "value-3")
+                                                                     ])
+                                                  Nothing)
+
+                                responses
+  assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-0\":\"value-1\"},\"key-4\":{\"field-0\":\"value-4\"},\"key-5\":{\"field-0\":\"value-5\"},\"key-2\":{\"field-0\":\"value-2\"},\"key-3\":{\"field-0\":\"value-3\"}}")) db'
+  assertEqual "cache has wrong data." (HM.singleton (T.pack "table-0")
+                                        $ HM.fromList [ ((T.pack "key-0"), HM.singleton (T.pack "field-0") (T.pack "value-0"))
+                                                      , ((T.pack "key-1"), HM.singleton (T.pack "field-0") (T.pack "value-1"))
+                                                      , ((T.pack "key-2"), HM.singleton (T.pack "field-0") (T.pack "value-2"))
+                                                      , ((T.pack "key-3"), HM.singleton (T.pack "field-0") (T.pack "value-3"))
+                                                      , ((T.pack "key-4"), HM.singleton (T.pack "field-0") (T.pack "value-4"))
+                                                      , ((T.pack "key-5"), HM.singleton (T.pack "field-0") (T.pack "value-5"))
+                                                      ])
+                                      $ getKvs s'
+
 main :: IO ()
 main = defaultMainWithOpts
        [
@@ -145,5 +186,6 @@ main = defaultMainWithOpts
        , testCase "deleting a value" singleDelete
        , testCase "updating a value" singleUpdate
        , testCase "reading a value" singleRead
+       , testCase "scanning some values" singleScan
        ]
        mempty
