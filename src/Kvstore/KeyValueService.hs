@@ -18,14 +18,18 @@ import qualified Kvstore.RequestHandling as RH
 import           Kvstore.KVSTypes
 
 import qualified DB_Iface                as DB
-
+import           Debug.Trace
 
 execRequests :: (DB.DB_Iface a, SerDe b) => (Vector.Vector KVRequest) -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
 execRequests reqs = do
-  -- cache management first
+  -- cache management: load all entries needed to process the requests
   Cache.refresh reqs
-  -- request handling afterwards
+  -- request handling
   responses <- mapM RH.serve =<< return reqs
+  -- (\x -> traceM $ "cache after request handling: " ++ show x) . getKvs =<< get
+  -- cache management: propagate side-effects to cache
+  Cache.invalidate reqs
+  -- (\x -> traceM $ "cache after invalidating: " ++ show x) . getKvs =<< get
   return responses
 
 instance (DB.DB_Iface a, SerDe b) => KeyValueStore_Iface (KVSHandler a b) where

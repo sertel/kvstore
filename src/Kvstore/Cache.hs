@@ -9,6 +9,7 @@ import qualified Data.ByteString.Lazy    as BS
 import           Control.Monad.State
 import qualified Data.Vector             as Vector
 import qualified Data.HashMap.Strict     as Map
+import qualified Data.Set                as Set
 import           Data.Maybe
 
 import qualified DB_Iface                as DB
@@ -17,21 +18,27 @@ import           Kvstore.InputOutput
 
 import           Debug.Trace
 
-loadCacheEntry :: (DB.DB_Iface a, SerDe b) => T.Text -> StateT (KVSState a b) IO (T.Text, Table)
+
+findReads :: Vector.Vector KVRequest -> Vector.Vector KVRequest
+findReads = Vector.filter ((flip Set.member $ Set.fromList [READ,SCAN]) . kVRequest_op)
+
+findWrites :: Vector.Vector KVRequest -> Vector.Vector KVRequest
+findWrites = Vector.filter ((flip Set.member $ Set.fromList [INSERT,UPDATE,DELETE]) . kVRequest_op)
+
+loadCacheEntry :: (DB.DB_Iface a, SerDe b) => T.Text -> StateT (KVSState a b) IO (Maybe (T.Text, Table))
 loadCacheEntry tableId = do
   (KVSState kvs db serde) <- get
   case Map.lookup tableId kvs of
-      (Just table) -> return (tableId, table)
+      (Just table) -> return $ Just (tableId, table)
       Nothing -> do
-                    serializedValTable <- loadTable tableId
-                    case serializedValTable of
-                      Nothing -> return (tableId, Map.empty)
-                      (Just v) -> (return . (tableId,)) =<< deserializeTable v
-
+          serializedValTable <- loadTable tableId
+          case serializedValTable of
+            Nothing -> return Nothing
+            (Just v) -> (return . Just . (tableId,)) =<< deserializeTable v
 
 -- TODO cache entry eviction etc. -> needs even more state to be stored
 
-updateCache :: Vector.Vector (T.Text, Table) -> StateT (KVSState a b) IO ()
+updateCache :: [(T.Text, Table)] -> StateT (KVSState a b) IO ()
 updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
   where
     updateCacheEntry (tableId, table) = do
@@ -42,28 +49,23 @@ updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
 
 refresh :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
 refresh reqs = do
-  let reads_ = (Vector.map kVRequest_table . Vector.filter findReadsAndScans) reqs
+  let reads_ = (Vector.map kVRequest_table . findReads) reqs
   newEntriesFromReads <- mapM loadCacheEntry reads_
 
   -- we also load the entries for the writes because requests are on the granularity of a table
   -- and the request of the service are on the granularity of the table entries.
-  let writes = (Vector.map kVRequest_table . Vector.filter findWrites) reqs
+  let writes = (Vector.map kVRequest_table . findWrites) reqs
   newEntriesFromWrites <- mapM loadCacheEntry writes
 
     -- TODO different strategies are possible here
   -- let neededWrites = Vector.filter (findNeeded readsAndScans) writes
 
-  updateCache newEntriesFromReads
-  updateCache newEntriesFromWrites
+  update_ newEntriesFromReads
+  update_ newEntriesFromWrites
 
+  -- (\x -> traceM $ "updated cache: " ++ show (getKvs x)) =<< get
   where
-    findReadsAndScans (KVRequest READ _ _ _ _ _) = True
-    findReadsAndScans (KVRequest SCAN _ _ _ _ _) = True
-    findReadsAndScans (KVRequest _ _ _ _ _ _) = False
-    findWrites (KVRequest INSERT _ _ _ _ _) = True
-    findWrites (KVRequest UPDATE _ _ _ _ _) = True
-    findWrites (KVRequest DELETE _ _ _ _ _) = True
-    findWrites (KVRequest _ _ _ _ _ _) = False
+    update_ = updateCache . catMaybes . Vector.toList
     findNeeded readReqs writeReq =
       let
         writeTableId = kVRequest_table writeReq
@@ -114,3 +116,11 @@ delete table key = do
                          let kvs' = Map.adjust (\_ -> valTable') key kvs
                          put $ KVSState kvs' db serde
                          return $ KVResponse DELETE Nothing Nothing Nothing
+
+-- very coarse-grained, I know
+invalidate :: Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
+invalidate = (mapM_ $ \req -> do
+    -- FIXME I should probably use lenses!
+    (KVSState kvs db serde) <- get
+    let kvs' = Map.delete (kVRequest_table req) kvs
+    put $ KVSState kvs' db serde) . findWrites

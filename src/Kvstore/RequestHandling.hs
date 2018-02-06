@@ -18,6 +18,7 @@ import qualified Kvstore.Cache           as Cache
 import qualified Kvstore.InputOutput     as InOut
 
 import qualified DB_Iface                as DB
+import           Debug.Trace
 
 
 read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a b) IO KVResponse
@@ -64,7 +65,7 @@ update tableId key (Just values) = do
   db <- (return . getDbBackend) s
   serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
-  let table = (fromJust . (HM.lookup tableId)) cache -- we loaded this already
+  let table = case HM.lookup tableId cache of { (Just t) -> t; Nothing -> HM.empty }
   let vals' = case HM.lookup key table of
               Nothing -> values
               (Just vals) -> HM.union values vals
@@ -79,8 +80,9 @@ insert tableId key (Just values) = do
   db <- (return . getDbBackend) s
   serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
-  let table = (fromJust . (HM.lookup tableId)) cache -- we loaded this already
-  let table' = HM.insert key values table
+  let table' = case HM.lookup tableId cache of
+                  (Just table) -> HM.insert key values table
+                  Nothing -> HM.singleton key values
   InOut.storeTable tableId =<< InOut.serializeTable table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
@@ -90,9 +92,9 @@ delete tableId key = do
   db <- (return . getDbBackend) s
   serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
-  let table = (fromJust . (HM.lookup tableId)) cache -- we loaded this already
-  let table' = HM.delete key table
-  InOut.storeTable tableId =<< InOut.serializeTable table'
+  case HM.lookup tableId cache of
+        (Just table) -> InOut.storeTable tableId =<< InOut.serializeTable (HM.delete key table)
+        Nothing -> return ()
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
 serve :: (DB.DB_Iface a, SerDe b) => KVRequest -> StateT (KVSState a b) IO KVResponse
