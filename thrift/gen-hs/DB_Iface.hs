@@ -41,5 +41,5 @@ import qualified Thrift.Arbitraries as T
 import Db_Types
 
 class DB_Iface a where
-  get :: a -> LT.Text -> P.IO LT.Text
-  put :: a -> LT.Text -> LT.Text -> P.IO LT.Text
+  get :: a -> LT.Text -> P.IO DBResponse
+  put :: a -> LT.Text -> LT.Text -> P.IO ()

@@ -15,45 +15,54 @@ import qualified DB_Iface                as DB
 import           Kvstore.KVSTypes
 import           Kvstore.InputOutput
 
+import           Debug.Trace
 
 loadCacheEntry :: (DB.DB_Iface a, SerDe b) => T.Text -> StateT (KVSState a b) IO (T.Text, Table)
 loadCacheEntry tableId = do
   (KVSState kvs db serde) <- get
-  if Map.member tableId kvs
-    then return (tableId, fromJust $ Map.lookup tableId kvs) -- redundant for now
-    else do
-      serializedValTable <- loadTable tableId
-      valTable <- deserializeTable serializedValTable
-      return (tableId, valTable)
+  case Map.lookup tableId kvs of
+      (Just table) -> return (tableId, table)
+      Nothing -> do
+                    serializedValTable <- loadTable tableId
+                    case serializedValTable of
+                      Nothing -> return (tableId, Map.empty)
+                      (Just v) -> (return . (tableId,)) =<< deserializeTable v
+
 
 -- TODO cache entry eviction etc. -> needs even more state to be stored
 
 updateCache :: Vector.Vector (T.Text, Table) -> StateT (KVSState a b) IO ()
 updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
   where
-    updateCacheEntry (tableId, valTable) = do
+    updateCacheEntry (tableId, table) = do
       (KVSState kvs db serde) <- get
       -- FIXME these might have to be merged in!
-      let kvs' = Map.insert tableId valTable kvs
+      let kvs' = Map.insert tableId table kvs
       put $ KVSState kvs' db serde
 
 refresh :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
 refresh reqs = do
-  let readsAndScans = Vector.filter findReadsAndScans reqs
-  let reads_ = Vector.map kVRequest_table readsAndScans
+  let reads_ = (Vector.map kVRequest_table . Vector.filter findReadsAndScans) reqs
   newEntriesFromReads <- mapM loadCacheEntry reads_
 
-  -- TODO different strategies are possible here
-  -- let writes = Vector.filter findWrites reqs
+  -- we also load the entries for the writes because requests are on the granularity of a table
+  -- and the request of the service are on the granularity of the table entries.
+  let writes = (Vector.map kVRequest_table . Vector.filter findWrites) reqs
+  newEntriesFromWrites <- mapM loadCacheEntry writes
+
+    -- TODO different strategies are possible here
   -- let neededWrites = Vector.filter (findNeeded readsAndScans) writes
 
   updateCache newEntriesFromReads
+  updateCache newEntriesFromWrites
 
   where
     findReadsAndScans (KVRequest READ _ _ _ _ _) = True
     findReadsAndScans (KVRequest SCAN _ _ _ _ _) = True
     findReadsAndScans (KVRequest _ _ _ _ _ _) = False
     findWrites (KVRequest INSERT _ _ _ _ _) = True
+    findWrites (KVRequest UPDATE _ _ _ _ _) = True
+    findWrites (KVRequest DELETE _ _ _ _ _) = True
     findWrites (KVRequest _ _ _ _ _ _) = False
     findNeeded readReqs writeReq =
       let

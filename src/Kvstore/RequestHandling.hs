@@ -19,6 +19,7 @@ import qualified Kvstore.InputOutput     as InOut
 
 import qualified DB_Iface                as DB
 
+
 read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a b) IO KVResponse
 read_ table key Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
 read_ table key (Just fields) = do

@@ -73,4 +73,4 @@ recv_put ip = do
   M.when (mtype == T.M_EXCEPTION) $ do { exn <- T.readAppExn ip ; T.readMessageEnd ip ; X.throw exn }
   res <- read_Put_result ip
   T.readMessageEnd ip
-  P.return $ put_result_success res
+  P.return ()

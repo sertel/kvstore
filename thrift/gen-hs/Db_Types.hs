@@ -38,3 +38,35 @@ import qualified Thrift.Types as T
 import qualified Thrift.Arbitraries as T
 
 
+data DBResponse = DBResponse  { dBResponse_value :: P.Maybe LT.Text
+  } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
+instance H.Hashable DBResponse where
+  hashWithSalt salt record = salt   `H.hashWithSalt` dBResponse_value record  
+instance QC.Arbitrary DBResponse where 
+  arbitrary = M.liftM DBResponse (M.liftM P.Just QC.arbitrary)
+  shrink obj | obj == default_DBResponse = []
+             | P.otherwise = M.catMaybes
+    [ if obj == default_DBResponse{dBResponse_value = dBResponse_value obj} then P.Nothing else P.Just $ default_DBResponse{dBResponse_value = dBResponse_value obj}
+    ]
+from_DBResponse :: DBResponse -> T.ThriftVal
+from_DBResponse record = T.TStruct $ Map.fromList $ M.catMaybes
+  [ (\_v2 -> (1, ("value",T.TString $ E.encodeUtf8 _v2))) <$> dBResponse_value record
+  ]
+write_DBResponse :: (T.Protocol p, T.Transport t) => p t -> DBResponse -> P.IO ()
+write_DBResponse oprot record = T.writeVal oprot $ from_DBResponse record
+encode_DBResponse :: (T.Protocol p, T.Transport t) => p t -> DBResponse -> LBS.ByteString
+encode_DBResponse oprot record = T.serializeVal oprot $ from_DBResponse record
+to_DBResponse :: T.ThriftVal -> DBResponse
+to_DBResponse (T.TStruct fields) = DBResponse{
+  dBResponse_value = P.maybe (P.Nothing) (\(_,_val4) -> P.Just (case _val4 of {T.TString _val5 -> E.decodeUtf8 _val5; _ -> P.error "wrong type"})) (Map.lookup (1) fields)
+  }
+to_DBResponse _ = P.error "not a struct"
+read_DBResponse :: (T.Transport t, T.Protocol p) => p t -> P.IO DBResponse
+read_DBResponse iprot = to_DBResponse <$> T.readVal iprot (T.T_STRUCT typemap_DBResponse)
+decode_DBResponse :: (T.Protocol p, T.Transport t) => p t -> LBS.ByteString -> DBResponse
+decode_DBResponse iprot bs = to_DBResponse $ T.deserializeVal iprot (T.T_STRUCT typemap_DBResponse) bs
+typemap_DBResponse :: T.TypeMap
+typemap_DBResponse = Map.fromList [(1,("value",T.T_STRING))]
+default_DBResponse :: DBResponse
+default_DBResponse = DBResponse{
+  dBResponse_value = P.Nothing}

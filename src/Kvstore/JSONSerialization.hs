@@ -15,4 +15,4 @@ instance SerDe JSONSerDe where
   serialize _ table = AE.encode table
 
   deserialize :: JSONSerDe -> ByteString -> Table
-  deserialize _ = (fromJust. AE.decode')
+  deserialize _ = (fromJust.  AE.decode')

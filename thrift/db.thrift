@@ -1,5 +1,9 @@
 
+struct DBResponse {
+ 1: optional string value
+}
+
 service DB{
-  string get(1:string key),
-  string put(1:string key, 2:string value)
+  DBResponse get(1:string key),
+  void put(1:string key, 2:string value)
 }

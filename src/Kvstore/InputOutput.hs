@@ -8,13 +8,17 @@ import qualified Data.ByteString.Lazy    as BS
 import qualified Data.Text.Lazy.Encoding as Enc
 
 import qualified DB_Iface                as DB
+import           Db_Types
 import           Kvstore.KVSTypes
 
-loadTable :: DB.DB_Iface a => T.Text -> StateT (KVSState a b) IO BS.ByteString
+
+loadTable :: DB.DB_Iface a => T.Text -> StateT (KVSState a b) IO (Maybe BS.ByteString)
 loadTable tableId = do
   (KVSState _ db _) <- get
   serializedValTable <- liftIO $ DB.get db tableId
-  return $ Enc.encodeUtf8 serializedValTable
+  case serializedValTable of
+    (DBResponse Nothing) -> return Nothing
+    (DBResponse (Just v)) -> return $ Just $ Enc.encodeUtf8 v
 
 deserializeTable :: SerDe b => BS.ByteString -> StateT (KVSState a b) IO Table
 deserializeTable serializedTable = do

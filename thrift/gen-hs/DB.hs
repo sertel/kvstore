@@ -54,7 +54,7 @@ instance QC.Arbitrary Get_args where
     ]
 from_Get_args :: Get_args -> T.ThriftVal
 from_Get_args record = T.TStruct $ Map.fromList $ M.catMaybes
-  [ (\_v2 -> P.Just (1, ("key",T.TString $ E.encodeUtf8 _v2))) $ get_args_key record
+  [ (\_v8 -> P.Just (1, ("key",T.TString $ E.encodeUtf8 _v8))) $ get_args_key record
   ]
 write_Get_args :: (T.Protocol p, T.Transport t) => p t -> Get_args -> P.IO ()
 write_Get_args oprot record = T.writeVal oprot $ from_Get_args record
@@ -62,7 +62,7 @@ encode_Get_args :: (T.Protocol p, T.Transport t) => p t -> Get_args -> LBS.ByteS
 encode_Get_args oprot record = T.serializeVal oprot $ from_Get_args record
 to_Get_args :: T.ThriftVal -> Get_args
 to_Get_args (T.TStruct fields) = Get_args{
-  get_args_key = P.maybe (get_args_key default_Get_args) (\(_,_val4) -> (case _val4 of {T.TString _val5 -> E.decodeUtf8 _val5; _ -> P.error "wrong type"})) (Map.lookup (1) fields)
+  get_args_key = P.maybe (get_args_key default_Get_args) (\(_,_val10) -> (case _val10 of {T.TString _val11 -> E.decodeUtf8 _val11; _ -> P.error "wrong type"})) (Map.lookup (1) fields)
   }
 to_Get_args _ = P.error "not a struct"
 read_Get_args :: (T.Transport t, T.Protocol p) => p t -> P.IO Get_args
@@ -74,7 +74,7 @@ typemap_Get_args = Map.fromList [(1,("key",T.T_STRING))]
 default_Get_args :: Get_args
 default_Get_args = Get_args{
   get_args_key = ""}
-data Get_result = Get_result  { get_result_success :: LT.Text
+data Get_result = Get_result  { get_result_success :: DBResponse
   } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
 instance H.Hashable Get_result where
   hashWithSalt salt record = salt   `H.hashWithSalt` get_result_success record  
@@ -86,7 +86,7 @@ instance QC.Arbitrary Get_result where
     ]
 from_Get_result :: Get_result -> T.ThriftVal
 from_Get_result record = T.TStruct $ Map.fromList $ M.catMaybes
-  [ (\_v8 -> P.Just (0, ("success",T.TString $ E.encodeUtf8 _v8))) $ get_result_success record
+  [ (\_v14 -> P.Just (0, ("success",from_DBResponse _v14))) $ get_result_success record
   ]
 write_Get_result :: (T.Protocol p, T.Transport t) => p t -> Get_result -> P.IO ()
 write_Get_result oprot record = T.writeVal oprot $ from_Get_result record
@@ -94,7 +94,7 @@ encode_Get_result :: (T.Protocol p, T.Transport t) => p t -> Get_result -> LBS.B
 encode_Get_result oprot record = T.serializeVal oprot $ from_Get_result record
 to_Get_result :: T.ThriftVal -> Get_result
 to_Get_result (T.TStruct fields) = Get_result{
-  get_result_success = P.maybe (get_result_success default_Get_result) (\(_,_val10) -> (case _val10 of {T.TString _val11 -> E.decodeUtf8 _val11; _ -> P.error "wrong type"})) (Map.lookup (0) fields)
+  get_result_success = P.maybe (get_result_success default_Get_result) (\(_,_val16) -> (case _val16 of {T.TStruct _val17 -> (to_DBResponse (T.TStruct _val17)); _ -> P.error "wrong type"})) (Map.lookup (0) fields)
   }
 to_Get_result _ = P.error "not a struct"
 read_Get_result :: (T.Transport t, T.Protocol p) => p t -> P.IO Get_result
@@ -102,10 +102,10 @@ read_Get_result iprot = to_Get_result <$> T.readVal iprot (T.T_STRUCT typemap_Ge
 decode_Get_result :: (T.Protocol p, T.Transport t) => p t -> LBS.ByteString -> Get_result
 decode_Get_result iprot bs = to_Get_result $ T.deserializeVal iprot (T.T_STRUCT typemap_Get_result) bs
 typemap_Get_result :: T.TypeMap
-typemap_Get_result = Map.fromList [(0,("success",T.T_STRING))]
+typemap_Get_result = Map.fromList [(0,("success",(T.T_STRUCT typemap_DBResponse)))]
 default_Get_result :: Get_result
 default_Get_result = Get_result{
-  get_result_success = ""}
+  get_result_success = default_DBResponse}
 data Put_args = Put_args  { put_args_key :: LT.Text
   , put_args_value :: LT.Text
   } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
@@ -121,8 +121,8 @@ instance QC.Arbitrary Put_args where
     ]
 from_Put_args :: Put_args -> T.ThriftVal
 from_Put_args record = T.TStruct $ Map.fromList $ M.catMaybes
-  [ (\_v14 -> P.Just (1, ("key",T.TString $ E.encodeUtf8 _v14))) $ put_args_key record
-  , (\_v14 -> P.Just (2, ("value",T.TString $ E.encodeUtf8 _v14))) $ put_args_value record
+  [ (\_v20 -> P.Just (1, ("key",T.TString $ E.encodeUtf8 _v20))) $ put_args_key record
+  , (\_v20 -> P.Just (2, ("value",T.TString $ E.encodeUtf8 _v20))) $ put_args_value record
   ]
 write_Put_args :: (T.Protocol p, T.Transport t) => p t -> Put_args -> P.IO ()
 write_Put_args oprot record = T.writeVal oprot $ from_Put_args record
@@ -130,8 +130,8 @@ encode_Put_args :: (T.Protocol p, T.Transport t) => p t -> Put_args -> LBS.ByteS
 encode_Put_args oprot record = T.serializeVal oprot $ from_Put_args record
 to_Put_args :: T.ThriftVal -> Put_args
 to_Put_args (T.TStruct fields) = Put_args{
-  put_args_key = P.maybe (put_args_key default_Put_args) (\(_,_val16) -> (case _val16 of {T.TString _val17 -> E.decodeUtf8 _val17; _ -> P.error "wrong type"})) (Map.lookup (1) fields),
-  put_args_value = P.maybe (put_args_value default_Put_args) (\(_,_val16) -> (case _val16 of {T.TString _val18 -> E.decodeUtf8 _val18; _ -> P.error "wrong type"})) (Map.lookup (2) fields)
+  put_args_key = P.maybe (put_args_key default_Put_args) (\(_,_val22) -> (case _val22 of {T.TString _val23 -> E.decodeUtf8 _val23; _ -> P.error "wrong type"})) (Map.lookup (1) fields),
+  put_args_value = P.maybe (put_args_value default_Put_args) (\(_,_val22) -> (case _val22 of {T.TString _val24 -> E.decodeUtf8 _val24; _ -> P.error "wrong type"})) (Map.lookup (2) fields)
   }
 to_Put_args _ = P.error "not a struct"
 read_Put_args :: (T.Transport t, T.Protocol p) => p t -> P.IO Put_args
@@ -144,27 +144,21 @@ default_Put_args :: Put_args
 default_Put_args = Put_args{
   put_args_key = "",
   put_args_value = ""}
-data Put_result = Put_result  { put_result_success :: LT.Text
-  } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
+data Put_result = Put_result deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
 instance H.Hashable Put_result where
-  hashWithSalt salt record = salt   `H.hashWithSalt` put_result_success record  
+  hashWithSalt salt record = salt  
 instance QC.Arbitrary Put_result where 
-  arbitrary = M.liftM Put_result (QC.arbitrary)
-  shrink obj | obj == default_Put_result = []
-             | P.otherwise = M.catMaybes
-    [ if obj == default_Put_result{put_result_success = put_result_success obj} then P.Nothing else P.Just $ default_Put_result{put_result_success = put_result_success obj}
-    ]
+  arbitrary = QC.elements [Put_result]
 from_Put_result :: Put_result -> T.ThriftVal
 from_Put_result record = T.TStruct $ Map.fromList $ M.catMaybes
-  [ (\_v21 -> P.Just (0, ("success",T.TString $ E.encodeUtf8 _v21))) $ put_result_success record
-  ]
+  []
 write_Put_result :: (T.Protocol p, T.Transport t) => p t -> Put_result -> P.IO ()
 write_Put_result oprot record = T.writeVal oprot $ from_Put_result record
 encode_Put_result :: (T.Protocol p, T.Transport t) => p t -> Put_result -> LBS.ByteString
 encode_Put_result oprot record = T.serializeVal oprot $ from_Put_result record
 to_Put_result :: T.ThriftVal -> Put_result
 to_Put_result (T.TStruct fields) = Put_result{
-  put_result_success = P.maybe (put_result_success default_Put_result) (\(_,_val23) -> (case _val23 of {T.TString _val24 -> E.decodeUtf8 _val24; _ -> P.error "wrong type"})) (Map.lookup (0) fields)
+
   }
 to_Put_result _ = P.error "not a struct"
 read_Put_result :: (T.Transport t, T.Protocol p) => p t -> P.IO Put_result
@@ -172,10 +166,10 @@ read_Put_result iprot = to_Put_result <$> T.readVal iprot (T.T_STRUCT typemap_Pu
 decode_Put_result :: (T.Protocol p, T.Transport t) => p t -> LBS.ByteString -> Put_result
 decode_Put_result iprot bs = to_Put_result $ T.deserializeVal iprot (T.T_STRUCT typemap_Put_result) bs
 typemap_Put_result :: T.TypeMap
-typemap_Put_result = Map.fromList [(0,("success",T.T_STRING))]
+typemap_Put_result = Map.fromList []
 default_Put_result :: Put_result
 default_Put_result = Put_result{
-  put_result_success = ""}
+}
 process_get (seqid, iprot, oprot, handler) = do
   args <- read_Get_args iprot
   (X.catch
@@ -195,8 +189,8 @@ process_put (seqid, iprot, oprot, handler) = do
   args <- read_Put_args iprot
   (X.catch
     (do
-      val <- Iface.put handler (put_args_key args) (put_args_value args)
-      let res = default_Put_result{put_result_success = val}
+      Iface.put handler (put_args_key args) (put_args_value args)
+      let res = default_Put_result
       T.writeMessageBegin oprot ("put", T.M_REPLY, seqid)
       write_Put_result oprot res
       T.writeMessageEnd oprot
