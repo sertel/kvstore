@@ -18,6 +18,7 @@ import           Kvstore.InputOutput
 
 import           Debug.Trace
 
+-- TODO cache entry eviction etc. -> needs even more state to be stored
 
 findReads :: Vector.Vector KVRequest -> Vector.Vector KVRequest
 findReads = Vector.filter ((flip Set.member $ Set.fromList [READ,SCAN]) . kVRequest_op)
@@ -36,16 +37,15 @@ loadCacheEntry tableId = do
             Nothing -> return Nothing
             (Just v) -> (return . Just . (tableId,)) =<< deserializeTable v
 
--- TODO cache entry eviction etc. -> needs even more state to be stored
+updateCacheEntry :: (T.Text, Table) -> StateT (KVSState a b) IO ()
+updateCacheEntry (tableId, table) = do
+  (KVSState kvs db serde) <- get
+  -- FIXME these might have to be merged in!
+  let kvs' = Map.insert tableId table kvs
+  put $ KVSState kvs' db serde
 
 updateCache :: [(T.Text, Table)] -> StateT (KVSState a b) IO ()
 updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
-  where
-    updateCacheEntry (tableId, table) = do
-      (KVSState kvs db serde) <- get
-      -- FIXME these might have to be merged in!
-      let kvs' = Map.insert tableId table kvs
-      put $ KVSState kvs' db serde
 
 refresh :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
 refresh reqs = do
@@ -117,10 +117,13 @@ delete table key = do
                          put $ KVSState kvs' db serde
                          return $ KVResponse DELETE Nothing Nothing Nothing
 
--- very coarse-grained, I know
-invalidate :: Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
-invalidate = (mapM_ $ \req -> do
+invalidateReq :: KVRequest -> StateT (KVSState a b) IO ()
+invalidateReq req = do
     -- FIXME I should probably use lenses!
     (KVSState kvs db serde) <- get
     let kvs' = Map.delete (kVRequest_table req) kvs
-    put $ KVSState kvs' db serde) . findWrites
+    put $ KVSState kvs' db serde
+
+-- very coarse-grained, I know
+invalidate :: Vector.Vector KVRequest -> StateT (KVSState a b) IO ()
+invalidate = mapM_  invalidateReq . findWrites
