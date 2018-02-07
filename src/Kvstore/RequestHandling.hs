@@ -47,8 +47,6 @@ scan table key (Just recordCount) = do
     Nothing -> return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
     (Just valTable) -> do
                         let collected = (Vector.fromList . collect . List.sortBy (compare `on` fst) . HM.toList) valTable
-                        traceM $ "table: " ++ show valTable
-                        traceM $ "collected values: " ++ show collected
                         return $ KVResponse SCAN Nothing (Just collected) Nothing
   where
     collect [] = []

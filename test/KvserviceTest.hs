@@ -1,13 +1,14 @@
 {-# LANGUAGE InstanceSigs, FlexibleInstances #-}
+{-# LANGUAGE ImplicitParams #-}
 
 import Test.HUnit hiding (State)
 import Test.Framework
 import Test.Framework.Providers.HUnit
 
-import qualified Data.Text.Lazy         as T
-import qualified Data.HashMap.Strict    as HM
-import qualified Data.HashSet           as Set
-import qualified Data.Vector            as V
+import qualified Data.Text.Lazy            as T
+import qualified Data.HashMap.Strict       as HM
+import qualified Data.HashSet              as Set
+import qualified Data.Vector               as V
 import           Data.Maybe
 import           Data.IORef
 import           Control.Monad.State
@@ -15,11 +16,12 @@ import           Debug.Trace
 
 import           Kvstore.JSONSerialization
 import           Kvstore.KVSTypes
-import           Kvstore.KeyValueService
+import qualified Kvstore.KeyValueService   as KVS
 
 import           Kvservice_Types
-import qualified DB_Iface               as DB
+import qualified DB_Iface                  as DB
 import           Db_Types
+
 
 type MockDB = IORef (HM.HashMap T.Text T.Text)
 
@@ -42,8 +44,11 @@ initState = do
   db <- newIORef HM.empty
   return $ KVSState HM.empty (db :: MockDB) JSONSerDe
 
-insertEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
-insertEntry table key field value = (execRequests . V.singleton)
+type ExecReqFn = (V.Vector KVRequest) -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+
+insertEntry :: (?execRequests :: ExecReqFn)
+            => String -> String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+insertEntry table key field value = (?execRequests . V.singleton)
                                     $ KVRequest INSERT
                                                 (T.pack table)
                                                 (T.pack key)
@@ -51,7 +56,7 @@ insertEntry table key field value = (execRequests . V.singleton)
                                                 Nothing
                                                 $ Just $ HM.singleton (T.pack field) (T.pack value)
 
-singleInsert :: Assertion
+singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do
   s <- initState
   (responses, s') <- flip runStateT s $ insertEntry "table-0" "key-0" "field-0" "value-0"
@@ -64,15 +69,16 @@ singleInsert = do
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) db'
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
-deleteEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
-deleteEntry table key = (execRequests . V.singleton) $ KVRequest DELETE
+deleteEntry :: (?execRequests :: ExecReqFn)
+            => String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+deleteEntry table key = (?execRequests . V.singleton) $ KVRequest DELETE
                                                                  (T.pack table)
                                                                  (T.pack key)
                                                                  Nothing
                                                                  Nothing
                                                                  Nothing
 
-singleDelete :: Assertion
+singleDelete :: (?execRequests :: ExecReqFn) => Assertion
 singleDelete = do
   s <- initState
   (responses, s') <- flip runStateT s $ do
@@ -87,8 +93,9 @@ singleDelete = do
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
 
-updateEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
-updateEntry table key field value = (execRequests . V.singleton)
+updateEntry :: (?execRequests :: ExecReqFn)
+            => String -> String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+updateEntry table key field value = (?execRequests . V.singleton)
                                     $ KVRequest UPDATE
                                                 (T.pack table)
                                                 (T.pack key)
@@ -96,7 +103,7 @@ updateEntry table key field value = (execRequests . V.singleton)
                                                 Nothing
                                                 $ Just $ HM.singleton (T.pack field) (T.pack value)
 
-singleUpdate :: Assertion
+singleUpdate :: (?execRequests :: ExecReqFn) => Assertion
 singleUpdate = do
   s <- initState
   (responses, s') <- flip runStateT s $ do
@@ -111,8 +118,9 @@ singleUpdate = do
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-1\"}}")) db'
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
-readEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
-readEntry table key field = (execRequests . V.singleton)
+readEntry :: (?execRequests :: ExecReqFn)
+          => String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+readEntry table key field = (?execRequests . V.singleton)
                             $ KVRequest READ
                                         (T.pack table)
                                         (T.pack key)
@@ -120,7 +128,7 @@ readEntry table key field = (execRequests . V.singleton)
                                         Nothing
                                         Nothing
 
-singleRead :: Assertion
+singleRead :: (?execRequests :: ExecReqFn) => Assertion
 singleRead = do
   s <- initState
   (responses, s') <- flip runStateT s $ do
@@ -138,8 +146,9 @@ singleRead = do
                                       $ HM.singleton (T.pack "field-0") (T.pack "value-0"))
                                       $ getKvs s'
 
-scanEntry :: (DB.DB_Iface a, SerDe b) => String -> String -> String -> StateT (KVSState a b) IO (V.Vector KVResponse)
-scanEntry table key field = (execRequests . V.singleton)
+scanEntry :: (?execRequests :: ExecReqFn)
+          => String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+scanEntry table key field = (?execRequests . V.singleton)
                             $ KVRequest SCAN
                                         (T.pack table)
                                         (T.pack key)
@@ -147,7 +156,7 @@ scanEntry table key field = (execRequests . V.singleton)
                                         (Just 3)
                                         Nothing
 
-singleScan :: Assertion
+singleScan :: (?execRequests :: ExecReqFn) => Assertion
 singleScan = do
   s <- initState
   (responses, s') <- flip runStateT s $ do
@@ -179,13 +188,52 @@ singleScan = do
                                                       ])
                                       $ getKvs s'
 
-main :: IO ()
-main = defaultMainWithOpts
+runSuite :: (?execRequests :: ExecReqFn) => IO ()
+runSuite = do
+  results <- runTestTT $ TestList
        [
-         testCase "inserting a value" singleInsert
-       , testCase "deleting a value" singleDelete
-       , testCase "updating a value" singleUpdate
-       , testCase "reading a value" singleRead
-       , testCase "scanning some values" singleScan
+         TestLabel "inserting a value" $ TestCase singleInsert
+       , TestLabel "deleting a value" $ TestCase singleDelete
+       , TestLabel "updating a value" $ TestCase singleUpdate
+       , TestLabel "reading a value" $ TestCase singleRead
+       , TestLabel "scanning some values" $ TestCase singleScan
        ]
-       mempty
+  putStrLn $ show results
+
+main :: IO ()
+main = do
+  -- let ?execRequests = KVS.execRequestsCoarse
+  -- defaultMainWithOpts
+  --        [
+  --          testCase "inserting a value" singleInsert
+  --        , testCase "deleting a value" singleDelete
+  --        , testCase "updating a value" singleUpdate
+  --        , testCase "reading a value" singleRead
+  --        , testCase "scanning some values" singleScan
+  --        ]
+  --        mempty
+
+  -- test runs:
+  traceM "\n======================================================="
+  traceM "***Running the coarse-grained imperative version: ***"
+  let ?execRequests = KVS.execRequestsCoarse
+  runSuite
+  traceM "=======================================================\n"
+
+  traceM "\n======================================================="
+  traceM "*** Running the fine-grained imperative version: ***"
+  let ?execRequests = KVS.execRequestsFine
+  runSuite
+  traceM "=======================================================\n"
+
+  traceM "\n======================================================="
+  traceM "*** Running the functional-imperative version: ***"
+  let ?execRequests = KVS.execRequestsFuncImp
+  runSuite
+  traceM "=======================================================\n"
+
+  traceM "\n======================================================="
+  traceM "*** Running the purely functional version: ***"
+  let ?execRequests = KVS.execRequestsFunctional
+  runSuite
+  traceM "=======================================================\n"
