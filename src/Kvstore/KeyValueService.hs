@@ -24,8 +24,9 @@ import           Debug.Trace
 -- mapM to update the cache.
 execRequestsFuncImp :: (DB.DB_Iface a, SerDe b) => (Vector.Vector KVRequest) -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
 execRequestsFuncImp reqs = do
-  -- cache management: load all entries needed to process the requests
   (KVSState cache db serde) <- get
+
+  -- cache management: load all entries needed to process the requests
   (newEntries, (KVSState _ db' serde')) <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
                                                               $ KVSState cache db serde
 
@@ -49,6 +50,7 @@ execRequestsFuncImp reqs = do
   -- cache management: propagate side-effects to cache
   (_, (KVSState cache'' _ _)) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined
 
+  put $ KVSState cache'' db'' serde''
   return responses
 
 -- the purely functional version explicitly folds over the cache!
@@ -73,6 +75,7 @@ execRequestsFunctional reqs = do
   -- cache management: propagate side-effects to cache
   (_, (KVSState cache'' _ _)) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined
 
+  put $ KVSState cache'' db'' serde''
   return responses
 
 -- coarse-grained:
