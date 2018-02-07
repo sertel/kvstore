@@ -188,52 +188,26 @@ singleScan = do
                                                       ])
                                       $ getKvs s'
 
-runSuite :: (?execRequests :: ExecReqFn) => IO ()
-runSuite = do
-  results <- runTestTT $ TestList
-       [
-         TestLabel "inserting a value" $ TestCase singleInsert
-       , TestLabel "deleting a value" $ TestCase singleDelete
-       , TestLabel "updating a value" $ TestCase singleUpdate
-       , TestLabel "reading a value" $ TestCase singleRead
-       , TestLabel "scanning some values" $ TestCase singleScan
-       ]
-  putStrLn $ show results
+suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
+suite name = [
+               testCase "=======================================================" (return ())
+             , testCase ("*** Running the " ++ name ++ " version: ***") (return ())
+             , testCase "inserting a value" singleInsert
+             , testCase "deleting a value" singleDelete
+             , testCase "updating a value" singleUpdate
+             , testCase "reading a value" singleRead
+             , testCase "scanning some values" singleScan
+             , testCase "=======================================================" (return ())
+         ]
+
 
 main :: IO ()
 main = do
-  -- let ?execRequests = KVS.execRequestsCoarse
-  -- defaultMainWithOpts
-  --        [
-  --          testCase "inserting a value" singleInsert
-  --        , testCase "deleting a value" singleDelete
-  --        , testCase "updating a value" singleUpdate
-  --        , testCase "reading a value" singleRead
-  --        , testCase "scanning some values" singleScan
-  --        ]
-  --        mempty
-
-  -- test runs:
-  traceM "\n======================================================="
-  traceM "***Running the coarse-grained imperative version: ***"
-  let ?execRequests = KVS.execRequestsCoarse
-  runSuite
-  traceM "=======================================================\n"
-
-  traceM "\n======================================================="
-  traceM "*** Running the fine-grained imperative version: ***"
-  let ?execRequests = KVS.execRequestsFine
-  runSuite
-  traceM "=======================================================\n"
-
-  traceM "\n======================================================="
-  traceM "*** Running the functional-imperative version: ***"
-  let ?execRequests = KVS.execRequestsFuncImp
-  runSuite
-  traceM "=======================================================\n"
-
-  traceM "\n======================================================="
-  traceM "*** Running the purely functional version: ***"
-  let ?execRequests = KVS.execRequestsFunctional
-  runSuite
-  traceM "=======================================================\n"
+  defaultMainWithOpts
+    (
+       (let ?execRequests = KVS.execRequestsCoarse     in suite "coarse-grained imperative")
+    ++ (let ?execRequests = KVS.execRequestsFine       in suite "fine-grained imperative")
+    ++ (let ?execRequests = KVS.execRequestsFuncImp    in suite "functional-imperative")
+    ++ (let ?execRequests = KVS.execRequestsFunctional in suite "purely functional")
+    )
+    mempty
