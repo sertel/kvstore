@@ -2,12 +2,15 @@ flags: {}
 extra-package-dbs: []
 packages:
 - .
+- location:
+    git: git@bitbucket.org:nrink/statefulness
+    commit: 9c34c58037fa4a058c2c4949eb03ecabf7ac054a
+  extra-dep: true
+- location:
+    git: git@github.com:ohua-dev/ohua-core
+    commit: 8b982a27f335e480982c0f47f966962ee8bf7bb9
+  extra-dep: true
 extra-deps:
-- aeson-1.2.3.0
-- primitive-0.5.4.0
-- th-abstraction-0.2.6.0
 - thrift-0.10.0
-- transformers-0.5.5.0
-- transformers-compat-0.5.1.4
-- vector-0.10.12.2
-resolver: lts-6.35
+resolver: lts-10.4
+allow-newer: true

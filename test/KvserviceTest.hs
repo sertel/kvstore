@@ -190,7 +190,7 @@ singleScan = do
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
-               testCase "=======================================================" (return ())
+               testCase "\n=======================================================" (return ())
              , testCase ("*** Running the " ++ name ++ " version: ***") (return ())
              , testCase "inserting a value" singleInsert
              , testCase "deleting a value" singleDelete
@@ -198,7 +198,7 @@ suite name = [
              , testCase "reading a value" singleRead
              , testCase "scanning some values" singleScan
              , testCase "=======================================================" (return ())
-         ]
+             ]
 
 
 main :: IO ()
