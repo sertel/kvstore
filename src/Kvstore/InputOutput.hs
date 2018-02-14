@@ -27,7 +27,7 @@ deserializeTable serializedTable = do
 
 storeTable :: DB.DB_Iface a => T.Text -> BS.ByteString -> StateT (KVSState a b) IO ()
 storeTable key serializedTable = do
-  db <- (return . getDbBackend) =<< get
+  db <- getDbBackend <$> get
   _ <- liftIO $ DB.put db key $ Enc.decodeUtf8 serializedTable
   return ()
 

@@ -18,6 +18,7 @@ import           Kvstore.InputOutput
 
 import           Debug.Trace
 
+
 -- TODO cache entry eviction etc. -> needs even more state to be stored
 
 findReads :: Vector.Vector KVRequest -> Vector.Vector KVRequest
@@ -35,7 +36,7 @@ loadCacheEntry tableId = do
           serializedValTable <- loadTable tableId
           case serializedValTable of
             Nothing -> return Nothing
-            (Just v) -> (return . Just . (tableId,)) =<< deserializeTable v
+            (Just v) -> Just . (tableId,) <$> deserializeTable v
 
 updateCacheEntry :: (T.Text, Table) -> StateT (KVSState a b) IO ()
 updateCacheEntry (tableId, table) = do
@@ -82,10 +83,10 @@ update :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSSt
 update table key Nothing = update table key $ Just Map.empty
 update table key (Just values) = do
    (KVSState tables db serde) <- get
-   case (Map.lookup table tables) of
+   case Map.lookup table tables of
      Nothing -> return $ KVResponse UPDATE Nothing Nothing $ Just $ T.pack "no such table!"
-     (Just valTable) -> do
-       case (Map.lookup key valTable) of
+     (Just valTable) ->
+       case Map.lookup key valTable of
          Nothing -> return $ KVResponse UPDATE Nothing Nothing $ Just $ T.pack "no such key!"
          (Just fields) -> do
            let fields' =  Map.union values fields
@@ -98,24 +99,24 @@ insert :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSSt
 insert table key Nothing = insert table key $ Just Map.empty
 insert table key (Just values) = do
    (KVSState kvs db serde) <- get
-   case (Map.lookup table kvs) of
+   case Map.lookup table kvs of
      Nothing -> return $ KVResponse INSERT Nothing Nothing $ Just $ T.pack "no such table!"
      (Just valTable) -> do
-                          let valTable' = Map.insert key values valTable
-                          let kvs' = Map.insert table valTable' kvs
-                          put $ KVSState kvs' db serde
-                          return $ KVResponse INSERT (Just Map.empty) Nothing Nothing
+          let valTable' = Map.insert key values valTable
+          let kvs' = Map.insert table valTable' kvs
+          put $ KVSState kvs' db serde
+          return $ KVResponse INSERT (Just Map.empty) Nothing Nothing
 
 delete :: T.Text -> T.Text -> StateT (KVSState a b) IO KVResponse
 delete table key = do
   (KVSState kvs db serde) <- get
-  case (Map.lookup table kvs) of -- probably something that should be done even before request processing
+  case Map.lookup table kvs of -- probably something that should be done even before request processing
     Nothing -> return $ KVResponse DELETE Nothing Nothing $ Just $ T.pack "no such table!"
     (Just valTable) -> do
-                         let valTable' = Map.delete key valTable
-                         let kvs' = Map.adjust (\_ -> valTable') key kvs
-                         put $ KVSState kvs' db serde
-                         return $ KVResponse DELETE Nothing Nothing Nothing
+         let valTable' = Map.delete key valTable
+         let kvs' = Map.adjust (const valTable') key kvs
+         put $ KVSState kvs' db serde
+         return $ KVResponse DELETE Nothing Nothing Nothing
 
 invalidateReq :: KVRequest -> StateT (KVSState a b) IO ()
 invalidateReq req = do

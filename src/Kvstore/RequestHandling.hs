@@ -26,10 +26,10 @@ import           Debug.Trace
 read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a b) IO KVResponse
 read_ table key Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
 read_ table key (Just fields) = do
-  tables <- return . getKvs =<< get
-  case (HM.lookup table tables) of
+  tables <- getKvs <$> get
+  case HM.lookup table tables of
     Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such table!"
-    (Just valTable) -> case (HM.lookup key valTable) of
+    (Just valTable) -> case HM.lookup key valTable of
                           Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such key!"
                           (Just fieldVals) -> return $ KVResponse
                                                          READ
@@ -37,13 +37,13 @@ read_ table key (Just fields) = do
                                                          Nothing
                                                          Nothing
   where
-    findFields fieldVals = (HM.fromList . catMaybes . (map (\k -> (k,) <$> HM.lookup k fieldVals)) . Set.toList)
+    findFields fieldVals = HM.fromList . mapMaybe (\k -> (k,) <$> HM.lookup k fieldVals) . Set.toList
 
 scan :: T.Text -> T.Text -> Maybe Int32 -> StateT (KVSState a b) IO KVResponse
 scan table key Nothing = return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no record count specified!"
 scan table key (Just recordCount) = do
-  tables <- return . getKvs =<< get
-  case (HM.lookup table tables) of
+  tables <- getKvs <$> get
+  case HM.lookup table tables of
     Nothing -> return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
     (Just valTable) -> do
                         let collected = (Vector.fromList . collect . List.sortBy (compare `on` fst) . HM.toList) valTable
@@ -93,7 +93,7 @@ delete tableId key = do
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
 serve :: (DB.DB_Iface a, SerDe b) => KVRequest -> StateT (KVSState a b) IO KVResponse
-serve (KVRequest op table key fields recordCount values) = do
+serve (KVRequest op table key fields recordCount values) =
   case op of
     READ   -> read_ table key fields
     SCAN   -> scan table key recordCount

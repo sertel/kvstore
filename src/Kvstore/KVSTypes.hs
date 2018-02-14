@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Kvstore.KVSTypes where
 
@@ -8,8 +9,10 @@ import qualified Data.HashMap.Strict    as Map
 import           Data.IORef
 
 import qualified DB_Iface               as DB
-import           GHC.Generics
 
+import           GHC.Generics
+import           Control.Monad.Par.Class as PC
+import           FuturesBasedMonad
 
 type Fields = Map.HashMap T.Text T.Text
 type Table = Map.HashMap T.Text Fields
@@ -25,10 +28,10 @@ class Compression a where
 
 data KVSState a b = KVSState {
                   getKvs :: KVStore -- the cache (kv-store)
-                , getDbBackend :: (DB.DB_Iface a => a) -- the storage backend
-                , getSerDe :: (SerDe b => b) -- serialization/deserialization
+                , getDbBackend :: DB.DB_Iface a => a -- the storage backend
+                , getSerDe :: SerDe b => b -- serialization/deserialization
                          -- TODO compression/decompression algo
                          -- TODO (Encryption ) -- the encryption backend
-                       }
+                       } --deriving (Generic)
 
-data KVSHandler a b = KVSHandler (IORef (KVSState a b))
+newtype KVSHandler a b = KVSHandler (IORef (KVSState a b))

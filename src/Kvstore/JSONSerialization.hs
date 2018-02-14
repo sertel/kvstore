@@ -12,7 +12,7 @@ data JSONSerDe = JSONSerDe
 
 instance SerDe JSONSerDe where
   serialize :: JSONSerDe -> Table -> ByteString
-  serialize _ table = AE.encode table
+  serialize _ = AE.encode
 
   deserialize :: JSONSerDe -> ByteString -> Table
-  deserialize _ = (fromJust.  AE.decode')
+  deserialize _ = fromJust . AE.decode'
