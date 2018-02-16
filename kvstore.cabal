@@ -17,9 +17,10 @@ library
   hs-source-dirs:      src, thrift/gen-hs
   exposed-modules:     Kvstore.KeyValueService
                      , Kvstore.Cache
+                     , Kvstore.KVSTypes
                      , Kvstore.Ohua.FBM.Cache
                      , Kvstore.Ohua.FBM.KeyValueService
-                     , Kvstore.KVSTypes
+                     , Kvstore.Ohua.FBM.KVSTypes
                      , Kvservice_Types
                      , Database.DatabaseService
                      , KeyValueStore
@@ -29,6 +30,7 @@ library
                      , Db_Types
   other-modules:       KeyValueStore_Client
                      , Kvstore.InputOutput
+                     , Kvstore.Ohua.FBM.RequestHandling
                      , Kvstore.RequestHandling
                      , Kvservice_Consts
                      , DB
@@ -46,9 +48,8 @@ library
                      , bytestring
                      , aeson
                      , statefulness
-                     , monad-par
-                     , abstract-par
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-simpl -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
+                     , deepseq
+  ghc-options:         -ddump-to-file -ddump-simpl -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   default-language:    Haskell2010
 
 

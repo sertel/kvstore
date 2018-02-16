@@ -10,8 +10,6 @@ import           Data.IORef
 
 import qualified DB_Iface               as DB
 
-import           GHC.Generics
-import           Control.Monad.Par.Class as PC
 import           FuturesBasedMonad
 
 type Fields = Map.HashMap T.Text T.Text

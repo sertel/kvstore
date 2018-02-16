@@ -19,7 +19,6 @@ import           Kvstore.InputOutput
 import           Debug.Trace
 
 import           FuturesBasedMonad
-import qualified Control.Monad.Par.Class as PC
 
 import           Kvstore.Ohua.FBM.KVSTypes
 
@@ -34,14 +33,11 @@ deserializeTableSF d = do
   return r
 
 -- algo
-loadCacheEntry :: (DB.DB_Iface db,
-                      SerDe serde,
-                      PC.ParIVar ivar m,
-                      PC.NFData (LocalState serde),
-                      PC.NFData (ivar (LocalState serde)),
-                      MonadIO m)
-                  => KVStore -> db -> T.Text -> OhuaM m (GlobalState ivar (LocalState serde)) (Maybe (T.Text, Table))
-loadCacheEntry kvs db tableId = do
+-- loadCacheEntry :: (DB.DB_Iface db,
+--                       SerDe serde,
+--                       PC.NFData (LocalState serde))
+--                   => KVStore -> db -> T.Text -> OhuaM (LocalState serde) (Maybe (T.Text, Table))
+loadCacheEntry kvs db tableId =
   case Map.lookup tableId kvs of
       (Just table) -> return $ Just (tableId, table)
       Nothing -> do

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Kvstore.Ohua.FBM.KeyValueService where
 
@@ -20,7 +20,7 @@ import qualified DB_Iface                             as DB
 import           Debug.Trace
 
 import           FuturesBasedMonad
-import qualified Control.Monad.Par.Class              as PC
+import qualified Control.DeepSeq                      as DS
 
 import qualified Kvstore.Ohua.FBM.Cache               as CacheO
 import           Kvstore.Ohua.FBM.KVSTypes
@@ -38,14 +38,11 @@ foldIntoCache =
                 return c'
               Nothing -> return c)
 
-execRequestsOhua :: (DB.DB_Iface db, SerDe serde,
-                     PC.ParIVar ivar m,
-                     PC.NFData KVResponse,
-                     PC.NFData (LocalState serde),
-                     PC.NFData (ivar (LocalState serde)),
-                     MonadIO m)
-                 => KVStore -> db -> Vector.Vector KVRequest
-                 -> OhuaM m (GlobalState ivar (LocalState serde)) (Vector.Vector KVResponse, KVStore, db)
+-- execRequestsOhua :: (DB.DB_Iface db, SerDe serde,
+--                      PC.NFData KVResponse,
+--                      PC.NFData (LocalState serde))
+--                  => KVStore -> db -> Vector.Vector KVRequest
+--                  -> OhuaM (LocalState serde) (Vector.Vector KVResponse, KVStore, db)
 execRequestsOhua cache db reqs = do
 
   -- FIXME if the db is folded over then this also turns into a fold.
@@ -63,9 +60,8 @@ execRequestsOhua cache db reqs = do
 
 execRequestsFunctional :: (DB.DB_Iface db,
                            SerDe serde,
-                           PC.NFData db,
-                           PC.NFData (LocalState serde),
-                           PC.NFData KVResponse)
+                           DS.NFData db,
+                           DS.NFData (LocalState serde))
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db serde) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do

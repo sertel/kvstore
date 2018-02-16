@@ -19,7 +19,6 @@ import qualified Kvstore.RequestHandling    as RH
 import qualified Kvstore.InputOutput        as InOut
 
 import           FuturesBasedMonad
-import qualified Control.Monad.Par.Class    as PC
 import           Kvstore.Ohua.FBM.KVSTypes
 
 
@@ -61,13 +60,10 @@ storeTable :: DB.DB_Iface db => db -> T.Text -> BS.ByteString -> StateT (LocalSt
 storeTable db tableId value = liftIO $ evalStateT (InOut.storeTable tableId value) $ KVSState undefined db undefined
 
 -- algos
-update :: (DB.DB_Iface db, SerDe serde,
-           PC.ParIVar ivar m,
-           PC.NFData (LocalState serde),
-           PC.NFData (ivar (LocalState serde)),
-           MonadIO m)
-       => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
-       -> OhuaM m (GlobalState ivar (LocalState serde)) KVResponse
+-- update :: (DB.DB_Iface db, SerDe serde,
+--            PC.NFData (LocalState serde))
+--        => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
+--        -> OhuaM (LocalState serde) KVResponse
 update cache db tableId key Nothing = update cache db tableId key $ Just HM.empty
 update cache db tableId key (Just values) = do
   table' <- liftWithIndex (-1) (calculateUpdate cache tableId key) values
@@ -75,13 +71,10 @@ update cache db tableId key (Just values) = do
   _ <- liftWithIndex (-1) (storeTable db tableId) serializedTable
   return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
 
-insert :: (DB.DB_Iface db, SerDe serde,
-           PC.ParIVar ivar m,
-           PC.NFData (LocalState serde),
-           PC.NFData (ivar (LocalState serde)),
-           MonadIO m)
-       => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
-       -> OhuaM m (GlobalState ivar (LocalState serde)) KVResponse
+-- insert :: (DB.DB_Iface db, SerDe serde,
+--            PC.NFData (LocalState serde))
+--        => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
+--        -> OhuaM (LocalState serde) KVResponse
 insert cache db tableId key Nothing = insert cache db tableId key $ Just HM.empty
 insert cache db tableId key (Just values) = do
   table' <- liftWithIndex (-1) (calculateInsert cache tableId key) values
@@ -89,13 +82,10 @@ insert cache db tableId key (Just values) = do
   _ <- liftWithIndex (-1) (storeTable db tableId) serializedTable
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
-delete :: (DB.DB_Iface db, SerDe serde,
-           PC.ParIVar ivar m,
-           PC.NFData (LocalState serde),
-           PC.NFData (ivar (LocalState serde)),
-           MonadIO m)
-       => KVStore -> db -> T.Text -> T.Text
-       -> OhuaM m (GlobalState ivar (LocalState serde)) KVResponse
+-- delete :: (DB.DB_Iface db, SerDe serde,
+--            PC.NFData (LocalState serde))
+--        => KVStore -> db -> T.Text -> T.Text
+--        -> OhuaM (LocalState serde) KVResponse
 delete cache db tableId key = do
   case HM.lookup tableId cache of
         (Just table) -> do
@@ -105,14 +95,11 @@ delete cache db tableId key = do
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
 
-serve :: (DB.DB_Iface a,
-             SerDe serde,
-             PC.ParIVar ivar m,
-             PC.NFData (LocalState serde),
-             PC.NFData (ivar (LocalState serde)),
-             MonadIO m)
-      => KVStore -> a -> KVRequest
-      -> OhuaM m (GlobalState ivar (LocalState serde)) KVResponse
+-- serve :: (DB.DB_Iface a,
+--              SerDe serde,
+--              PC.NFData (LocalState serde))
+--       => KVStore -> a -> KVRequest
+--       -> OhuaM (LocalState serde) KVResponse
 serve cache db (KVRequest op tableId key fields recordCount values) =
   case op of
     READ   -> liftWithIndex (-1) (read_ cache tableId key) fields
