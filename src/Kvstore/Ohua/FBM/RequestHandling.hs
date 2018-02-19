@@ -7,6 +7,7 @@ import qualified Data.Text.Lazy             as T
 import qualified Data.HashSet               as Set
 import qualified Data.HashMap.Strict     as HM
 import qualified Data.ByteString.Lazy    as BS
+import           Data.Maybe
 import           Control.Monad.State
 import           Control.Monad.IO.Class
 
@@ -87,11 +88,14 @@ insert cache db tableId key (Just values) = do
 --        => KVStore -> db -> T.Text -> T.Text
 --        -> OhuaM (LocalState serde) KVResponse
 delete cache db tableId key = do
-  case HM.lookup tableId cache of
-        (Just table) -> do
-          serializedTable <- liftWithIndex 2 serializeTable $ HM.delete key table
-          liftWithIndex (-1) (storeTable db tableId) serializedTable
-        Nothing -> return ()
+  let table = HM.lookup tableId cache
+  case_ (isJust table)
+        [
+          (True, do
+              serializedTable <- liftWithIndex 2 serializeTable $ HM.delete key $ fromJust table
+              liftWithIndex (-1) (storeTable db tableId) serializedTable)
+        , (False, return ())
+        ]
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
 
@@ -101,9 +105,11 @@ delete cache db tableId key = do
 --       => KVStore -> a -> KVRequest
 --       -> OhuaM (LocalState serde) KVResponse
 serve cache db (KVRequest op tableId key fields recordCount values) =
-  case op of
-    READ   -> liftWithIndex (-1) (read_ cache tableId key) fields
-    SCAN   -> liftWithIndex (-1) (scan cache tableId key) recordCount
-    UPDATE -> update cache db tableId key values
-    INSERT -> insert cache db tableId key values
-    DELETE -> delete cache db tableId key
+  case_ op
+    [
+      (READ   , liftWithIndex (-1) (read_ cache tableId key) fields)
+    , (SCAN   , liftWithIndex (-1) (scan cache tableId key) recordCount)
+    , (UPDATE , update cache db tableId key values)
+    , (INSERT , insert cache db tableId key values)
+    , (DELETE , delete cache db tableId key)
+    ]

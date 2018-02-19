@@ -19,7 +19,7 @@ import           Kvstore.InputOutput
 import           Debug.Trace
 
 import           FuturesBasedMonad
-
+import           Control.DeepSeq
 import           Kvstore.Ohua.FBM.KVSTypes
 
 loadTableSF :: (DB.DB_Iface a, SerDe serde) => a -> T.Text -> StateT (LocalState serde) IO (Maybe BS.ByteString)
@@ -33,15 +33,21 @@ deserializeTableSF d = do
   return r
 
 -- algo
--- loadCacheEntry :: (DB.DB_Iface db,
---                       SerDe serde,
---                       PC.NFData (LocalState serde))
---                   => KVStore -> db -> T.Text -> OhuaM (LocalState serde) (Maybe (T.Text, Table))
+loadCacheEntry :: (DB.DB_Iface db,
+                      SerDe serde,
+                      NFData (LocalState serde))
+                  => KVStore -> db -> T.Text -> OhuaM (LocalState serde) (Maybe (T.Text, Table))
 loadCacheEntry kvs db tableId =
-  case Map.lookup tableId kvs of
-      (Just table) -> return $ Just (tableId, table)
-      Nothing -> do
-          serializedValTable <- liftWithIndex (-1) (loadTableSF db) tableId
-          case serializedValTable of
-            Nothing -> return Nothing
-            (Just v) -> Just . (tableId,) <$> liftWithIndex 0 deserializeTableSF v
+  let table = Map.lookup tableId kvs
+  in
+    case_ (isJust table)
+      [
+        (True , return $ Just (tableId, fromJust table))
+      , (False , do
+            serializedValTable <- liftWithIndex (-1) (loadTableSF db) tableId
+            case_ (isJust serializedValTable)
+             [
+               (True , Just . (tableId,) <$> liftWithIndex 0 deserializeTableSF (fromJust serializedValTable))
+             , (False , return Nothing)
+             ])
+      ]

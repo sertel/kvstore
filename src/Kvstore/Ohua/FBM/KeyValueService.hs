@@ -20,7 +20,7 @@ import qualified DB_Iface                             as DB
 import           Debug.Trace
 
 import           FuturesBasedMonad
-import qualified Control.DeepSeq                      as DS
+import           Control.DeepSeq
 
 import qualified Kvstore.Ohua.FBM.Cache               as CacheO
 import           Kvstore.Ohua.FBM.KVSTypes
@@ -38,11 +38,11 @@ foldIntoCache =
                 return c'
               Nothing -> return c)
 
--- execRequestsOhua :: (DB.DB_Iface db, SerDe serde,
---                      PC.NFData KVResponse,
---                      PC.NFData (LocalState serde))
---                  => KVStore -> db -> Vector.Vector KVRequest
---                  -> OhuaM (LocalState serde) (Vector.Vector KVResponse, KVStore, db)
+execRequestsOhua :: (DB.DB_Iface db, SerDe serde,
+                     -- PC.NFData KVResponse,
+                     NFData (LocalState serde))
+                 => KVStore -> db -> Vector.Vector KVRequest
+                 -> OhuaM (LocalState serde) (Vector.Vector KVResponse, KVStore, db)
 execRequestsOhua cache db reqs = do
 
   -- FIXME if the db is folded over then this also turns into a fold.
@@ -60,8 +60,8 @@ execRequestsOhua cache db reqs = do
 
 execRequestsFunctional :: (DB.DB_Iface db,
                            SerDe serde,
-                           DS.NFData db,
-                           DS.NFData (LocalState serde))
+                           NFData db,
+                           NFData (LocalState serde))
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db serde) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
