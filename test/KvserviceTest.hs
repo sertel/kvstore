@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs, FlexibleInstances #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE LambdaCase #-}
 
 import Test.HUnit hiding (State)
 import Test.Framework
@@ -17,6 +18,8 @@ import           Debug.Trace
 import           Kvstore.JSONSerialization
 import           Kvstore.KVSTypes
 import qualified Kvstore.KeyValueService   as KVS
+import           Kvstore.Ohua.FBM.KVSTypes
+import qualified Kvstore.Ohua.FBM.KeyValueService   as KVSOhuaFBM
 
 import           Kvservice_Types
 import qualified DB_Iface                  as DB
@@ -27,15 +30,12 @@ type MockDB = IORef (HM.HashMap T.Text T.Text)
 
 instance DB.DB_Iface MockDB where
   get :: MockDB -> T.Text -> IO DBResponse
-  get dbRef key = do
-    db <- readIORef dbRef
-    -- return $ DBResponse $ traceShowId $ HM.lookup key db
-    return $ DBResponse $ HM.lookup key db
+  get dbRef key = DBResponse . HM.lookup key <$> readIORef dbRef
 
   put :: MockDB -> T.Text -> T.Text -> IO ()
   put dbRef key value = do
     db <- readIORef dbRef
-    let convert = \x -> case x of { (Just p) -> p; Nothing -> T.empty }
+    let convert = \case (Just p) -> p; Nothing -> T.empty
     let db' = HM.insert key value db
     writeIORef dbRef db'
 
@@ -44,7 +44,7 @@ initState = do
   db <- newIORef HM.empty
   return $ KVSState HM.empty (db :: MockDB) JSONSerDe
 
-type ExecReqFn = (V.Vector KVRequest) -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+type ExecReqFn = V.Vector KVRequest -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
 
 insertEntry :: (?execRequests :: ExecReqFn)
             => String -> String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
@@ -160,7 +160,7 @@ singleScan :: (?execRequests :: ExecReqFn) => Assertion
 singleScan = do
   s <- initState
   (responses, s') <- flip runStateT s $ do
-                                mapM ((\i -> insertEntry ("table-0") ("key-"++i) "field-0" ("value-"++i)) . show) [0,1..5]
+                                mapM_ ((\i -> insertEntry "table-0" ("key-"++i) "field-0" ("value-"++i)) . show) [0,1..5]
                                 scanEntry "table-0" "key-1" "field-0"
   -- traceM $ "responses: " ++ show responses
   -- traceM $ "kvs: " ++ (show $ getKvs s')
@@ -179,12 +179,12 @@ singleScan = do
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-0\":\"value-1\"},\"key-4\":{\"field-0\":\"value-4\"},\"key-5\":{\"field-0\":\"value-5\"},\"key-2\":{\"field-0\":\"value-2\"},\"key-3\":{\"field-0\":\"value-3\"}}")) db'
   assertEqual "cache has wrong data." (HM.singleton (T.pack "table-0")
-                                        $ HM.fromList [ ((T.pack "key-0"), HM.singleton (T.pack "field-0") (T.pack "value-0"))
-                                                      , ((T.pack "key-1"), HM.singleton (T.pack "field-0") (T.pack "value-1"))
-                                                      , ((T.pack "key-2"), HM.singleton (T.pack "field-0") (T.pack "value-2"))
-                                                      , ((T.pack "key-3"), HM.singleton (T.pack "field-0") (T.pack "value-3"))
-                                                      , ((T.pack "key-4"), HM.singleton (T.pack "field-0") (T.pack "value-4"))
-                                                      , ((T.pack "key-5"), HM.singleton (T.pack "field-0") (T.pack "value-5"))
+                                        $ HM.fromList [ (T.pack "key-0", HM.singleton (T.pack "field-0") (T.pack "value-0"))
+                                                      , (T.pack "key-1", HM.singleton (T.pack "field-0") (T.pack "value-1"))
+                                                      , (T.pack "key-2", HM.singleton (T.pack "field-0") (T.pack "value-2"))
+                                                      , (T.pack "key-3", HM.singleton (T.pack "field-0") (T.pack "value-3"))
+                                                      , (T.pack "key-4", HM.singleton (T.pack "field-0") (T.pack "value-4"))
+                                                      , (T.pack "key-5", HM.singleton (T.pack "field-0") (T.pack "value-5"))
                                                       ])
                                       $ getKvs s'
 
@@ -202,12 +202,13 @@ suite name = [
 
 
 main :: IO ()
-main = do
+main =
   defaultMainWithOpts
     (
-       (let ?execRequests = KVS.execRequestsCoarse     in suite "coarse-grained imperative")
-    ++ (let ?execRequests = KVS.execRequestsFine       in suite "fine-grained imperative")
-    ++ (let ?execRequests = KVS.execRequestsFuncImp    in suite "functional-imperative")
-    ++ (let ?execRequests = KVS.execRequestsFunctional in suite "purely functional")
+       (let ?execRequests = KVS.execRequestsCoarse            in suite "coarse-grained imperative")
+    ++ (let ?execRequests = KVS.execRequestsFine              in suite "fine-grained imperative")
+    ++ (let ?execRequests = KVS.execRequestsFuncImp           in suite "functional-imperative")
+    ++ (let ?execRequests = KVS.execRequestsFunctional        in suite "purely functional")
+    ++ (let ?execRequests = KVSOhuaFBM.execRequestsFunctional in suite "Ohua - FBM")
     )
     mempty

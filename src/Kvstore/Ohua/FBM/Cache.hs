@@ -35,7 +35,7 @@ deserializeTableSF d = do
 -- algo
 loadCacheEntry :: (DB.DB_Iface db,
                       SerDe serde,
-                      NFData (LocalState serde))
+                      NFData serde)
                   => KVStore -> db -> T.Text -> OhuaM (LocalState serde) (Maybe (T.Text, Table))
 loadCacheEntry kvs db tableId =
   let table = Map.lookup tableId kvs

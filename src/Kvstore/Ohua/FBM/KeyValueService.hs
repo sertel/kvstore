@@ -40,7 +40,7 @@ foldIntoCache =
 
 execRequestsOhua :: (DB.DB_Iface db, SerDe serde,
                      -- PC.NFData KVResponse,
-                     NFData (LocalState serde))
+                     NFData serde)
                  => KVStore -> db -> Vector.Vector KVRequest
                  -> OhuaM (LocalState serde) (Vector.Vector KVResponse, KVStore, db)
 execRequestsOhua cache db reqs = do
@@ -61,7 +61,7 @@ execRequestsOhua cache db reqs = do
 execRequestsFunctional :: (DB.DB_Iface db,
                            SerDe serde,
                            NFData db,
-                           NFData (LocalState serde))
+                           NFData serde)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db serde) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do

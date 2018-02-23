@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances, InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Kvstore.JSONSerialization where
 
@@ -8,7 +9,7 @@ import           Data.ByteString.Lazy
 import           Data.Maybe
 import           GHC.Generics
 
-data JSONSerDe = JSONSerDe
+data JSONSerDe = JSONSerDe deriving Generic
 
 instance SerDe JSONSerDe where
   serialize :: JSONSerDe -> Table -> ByteString
