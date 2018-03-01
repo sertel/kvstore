@@ -24,9 +24,9 @@ import           Control.DeepSeq
 
 import qualified Kvstore.Ohua.FBM.Cache               as CacheO
 import           Kvstore.Ohua.FBM.KVSTypes
-import qualified Kvstore.Ohua.FBM.RequestHandling     as RH
+import qualified Kvstore.Ohua.FBM.RequestHandling     as RH (serve)
 
-foldEvictFromCache :: KVStore -> Vector.Vector KVRequest -> StateT (LocalState serde) IO KVStore
+foldEvictFromCache :: SerDe serde => KVStore -> Vector.Vector KVRequest -> StateT (LocalState serde) IO KVStore
 foldEvictFromCache cache = return . foldl (\c r -> Map.delete (kVRequest_table r) c) cache . Cache.findWrites
 
 foldIntoCache :: SerDe serde => KVStore -> [Maybe (T.Text, Table)] -> StateT (LocalState serde) IO KVStore
@@ -51,12 +51,13 @@ execRequestsOhua cache db reqs = do
   --       to be folded over!
   newEntries <- smap (CacheO.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
 
-  cache' <- liftWithIndex (-1) (foldIntoCache cache) newEntries
+  cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
 
   responses <- smap (RH.serve cache' db) $ Vector.toList reqs
 
-  cache'' <- liftWithIndex (-1) (foldEvictFromCache cache) reqs
+  cache'' <- liftWithIndex foldEvictFromCacheStateIdx (foldEvictFromCache cache) reqs
   return (Vector.fromList responses, cache'', db)
+
 
 execRequestsFunctional :: (DB.DB_Iface db,
                            SerDe serde,
@@ -67,7 +68,6 @@ execRequestsFunctional :: (DB.DB_Iface db,
 execRequestsFunctional reqs = do
   (KVSState cache db serde) <- get
   ((responses, cache'', db''), Deserializer serde'':_)
-                <- liftIO $ runOhuaM (execRequestsOhua cache db reqs)
-                                     [Deserializer serde, Serializer serde] -- TODO define the global state!
+                <- liftIO $ runOhuaM (execRequestsOhua cache db reqs) globalState
   put $ KVSState cache'' db'' serde''
   return responses

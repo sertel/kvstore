@@ -21,6 +21,7 @@ import           Debug.Trace
 import           FuturesBasedMonad
 import           Control.DeepSeq
 import           Kvstore.Ohua.FBM.KVSTypes
+import           Kvstore.Ohua.FBM.KeyValueService (loadTableStateIdx,deserializeTableStateIdx)
 
 loadTableSF :: (DB.DB_Iface a, SerDe serde) => a -> T.Text -> StateT (LocalState serde) IO (Maybe BS.ByteString)
 loadTableSF db tableId = liftIO $ evalStateT (loadTable tableId) $ KVSState undefined db undefined
@@ -44,10 +45,10 @@ loadCacheEntry kvs db tableId =
       [
         (True , return $ Just (tableId, fromJust table))
       , (False , do
-            serializedValTable <- liftWithIndex (-1) (loadTableSF db) tableId
+            serializedValTable <- liftWithIndex loadTableStateIdx (loadTableSF db) tableId
             case_ (isJust serializedValTable)
              [
-               (True , Just . (tableId,) <$> liftWithIndex 0 deserializeTableSF (fromJust serializedValTable))
+               (True , Just . (tableId,) <$> liftWithIndex deserializeTableStateIdx deserializeTableSF (fromJust serializedValTable))
              , (False , return Nothing)
              ])
       ]
