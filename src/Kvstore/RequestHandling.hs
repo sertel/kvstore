@@ -23,7 +23,7 @@ import qualified DB_Iface                as DB
 import           Debug.Trace
 
 
-read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a b) IO KVResponse
+read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a) IO KVResponse
 read_ table key Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
 read_ table key (Just fields) = do
   tables <- getKvs <$> get
@@ -39,7 +39,7 @@ read_ table key (Just fields) = do
   where
     findFields fieldVals = HM.fromList . mapMaybe (\k -> (k,) <$> HM.lookup k fieldVals) . Set.toList
 
-scan :: T.Text -> T.Text -> Maybe Int32 -> StateT (KVSState a b) IO KVResponse
+scan :: T.Text -> T.Text -> Maybe Int32 -> StateT (KVSState a) IO KVResponse
 scan table key Nothing = return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no record count specified!"
 scan table key (Just recordCount) = do
   tables <- getKvs <$> get
@@ -53,12 +53,10 @@ scan table key (Just recordCount) = do
     collect a@((k,v):xs) | k == key = (map snd . take (fromIntegral recordCount)) a
                          | otherwise = collect xs
 
-update :: (DB.DB_Iface a, SerDe b) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a b) IO KVResponse
+update :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 update table key Nothing = update table key $ Just HM.empty
 update tableId key (Just values) = do
   s <- get
-  db <- (return . getDbBackend) s
-  serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
   let table = case HM.lookup tableId cache of { (Just t) -> t; Nothing -> HM.empty }
   let vals' = case HM.lookup key table of
@@ -68,12 +66,10 @@ update tableId key (Just values) = do
   InOut.storeTable tableId =<< InOut.serializeTable table'
   return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
 
-insert :: (DB.DB_Iface a, SerDe b) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a b) IO KVResponse
+insert :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 insert table key Nothing = insert table key $ Just HM.empty
 insert tableId key (Just values) = do
   s <- get
-  db <- (return . getDbBackend) s
-  serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
   let table' = case HM.lookup tableId cache of
                   (Just table) -> HM.insert key values table
@@ -81,18 +77,16 @@ insert tableId key (Just values) = do
   InOut.storeTable tableId =<< InOut.serializeTable table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
-delete :: (DB.DB_Iface a, SerDe b) => T.Text -> T.Text -> StateT (KVSState a b) IO KVResponse
+delete :: (DB.DB_Iface a) => T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete tableId key = do
   s <- get
-  db <- (return . getDbBackend) s
-  serde <- (return . getSerDe) s
   cache <- (return . getKvs) s
   case HM.lookup tableId cache of
         (Just table) -> InOut.storeTable tableId =<< InOut.serializeTable (HM.delete key table)
         Nothing -> return ()
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
-serve :: (DB.DB_Iface a, SerDe b) => KVRequest -> StateT (KVSState a b) IO KVResponse
+serve :: (DB.DB_Iface a) => KVRequest -> StateT (KVSState a) IO KVResponse
 serve (KVRequest op table key fields recordCount values) =
   case op of
     READ   -> read_ table key fields

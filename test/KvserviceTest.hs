@@ -15,7 +15,7 @@ import           Data.IORef
 import           Control.Monad.State
 import           Debug.Trace
 
-import           Kvstore.JSONSerialization
+import           Kvstore.Serialization
 import           Kvstore.KVSTypes
 import qualified Kvstore.KeyValueService   as KVS
 import           Kvstore.Ohua.FBM.KVSTypes
@@ -39,15 +39,15 @@ instance DB.DB_Iface MockDB where
     let db' = HM.insert key value db
     writeIORef dbRef db'
 
-initState :: IO (KVSState MockDB JSONSerDe)
+initState :: IO (KVSState MockDB)
 initState = do
   db <- newIORef HM.empty
-  return $ KVSState HM.empty (db :: MockDB) JSONSerDe
+  return $ KVSState HM.empty (db :: MockDB) jsonSer jsonDeSer
 
-type ExecReqFn = V.Vector KVRequest -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+type ExecReqFn = V.Vector KVRequest -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 
 insertEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+            => String -> String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 insertEntry table key field value = (?execRequests . V.singleton)
                                     $ KVRequest INSERT
                                                 (T.pack table)
@@ -70,7 +70,7 @@ singleInsert = do
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
 deleteEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+            => String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 deleteEntry table key = (?execRequests . V.singleton) $ KVRequest DELETE
                                                                  (T.pack table)
                                                                  (T.pack key)
@@ -94,7 +94,7 @@ singleDelete = do
 
 
 updateEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+            => String -> String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 updateEntry table key field value = (?execRequests . V.singleton)
                                     $ KVRequest UPDATE
                                                 (T.pack table)
@@ -119,7 +119,7 @@ singleUpdate = do
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
 readEntry :: (?execRequests :: ExecReqFn)
-          => String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+          => String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 readEntry table key field = (?execRequests . V.singleton)
                             $ KVRequest READ
                                         (T.pack table)
@@ -147,7 +147,7 @@ singleRead = do
                                       $ getKvs s'
 
 scanEntry :: (?execRequests :: ExecReqFn)
-          => String -> String -> String -> StateT (KVSState MockDB JSONSerDe) IO (V.Vector KVResponse)
+          => String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 scanEntry table key field = (?execRequests . V.singleton)
                             $ KVRequest SCAN
                                         (T.pack table)

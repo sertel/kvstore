@@ -23,16 +23,16 @@ import           Debug.Trace
 
 -- almost purely functional version except for the fact that it uses an imperative
 -- mapM to update the cache.
-execRequestsFuncImp :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
+execRequestsFuncImp :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFuncImp reqs = do
-  (KVSState cache db serde) <- get
+  (KVSState cache db ser deser) <- get
 
   -- cache management: load all entries needed to process the requests
-  (newEntries, KVSState _ db' serde') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
-                                                            $ KVSState cache db serde
+  (newEntries, KVSState _ db' _ deser') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
+                                                            $ KVSState cache db ser deser
 
   -- mapM here actually folds over the cache! (mapM is a sequential 'for-loop' over the state by definition!)
-  (_, KVSState cache' _ _) <- runStateT (mapM (\case
+  (_, KVSState cache' _ _ _) <- runStateT (mapM (\case
                                                   (Just entry) -> do
                                                     -- I wrote this very explicitly here to show what happens with the state.
                                                     -- one could also just write:
@@ -42,47 +42,47 @@ execRequestsFuncImp reqs = do
                                                     put s'
                                                   Nothing -> return ())
                                           newEntries)
-                                          $ KVSState cache undefined undefined
+                                          $ KVSState cache undefined undefined undefined
 
   -- request handling
-  (responses, KVSState _ db'' serde'') <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' serde'
+  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' ser undefined
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache'' _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined
+  (_, KVSState cache'' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined undefined
 
-  put $ KVSState cache'' db'' serde''
+  put $ KVSState cache'' db'' ser' deser'
   return responses
 
 -- the purely functional version explicitly folds over the cache!
-execRequestsFunctional :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
+execRequestsFunctional :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
   -- cache management: load all entries needed to process the requests
-  (KVSState cache db serde) <- get
-  (newEntries, KVSState _ db' serde') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
-                                                              $ KVSState cache db serde
+  (KVSState cache db ser deser) <- get
+  (newEntries, KVSState _ db' _ deser') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
+                                                              $ KVSState cache db undefined deser
 
   cache' <- foldM (\c e ->
                     case e of
                       (Just entry) -> do
-                        (_, KVSState c' _ _) <- liftIO $ runStateT (Cache.updateCacheEntry entry) $ KVSState c undefined undefined
+                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.updateCacheEntry entry) $ KVSState c undefined undefined undefined
                         return c'
                       Nothing -> return c)
                   cache newEntries
 
   -- request handling
-  (responses, KVSState _ db'' serde'') <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' serde'
+  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' ser undefined
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache'' _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined
+  (_, KVSState cache'' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined undefined
 
-  put $ KVSState cache'' db'' serde''
+  put $ KVSState cache'' db'' ser' deser'
   return responses
 
 -- coarse-grained:
 -- this is the imperative version of the algorithm that places the state in the cache.
 -- turning this into a parallel version would not work because of the different uses of
 -- the cache and the db connections.
-execRequestsCoarse :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
+execRequestsCoarse :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsCoarse reqs = do
   -- cache management: load all entries needed to process the requests
   Cache.refresh reqs
@@ -99,7 +99,7 @@ execRequestsCoarse reqs = do
 
 -- fine-grained:
 -- same as the above but lifting more functionality into this function.
-execRequestsFine :: (DB.DB_Iface a, SerDe b) => Vector.Vector KVRequest -> StateT (KVSState a b) IO (Vector.Vector KVResponse)
+execRequestsFine :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFine reqs = do
   -- cache management: load all entries needed to process the requests
   newEntries <- mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs]
@@ -116,8 +116,8 @@ execRequestsFine reqs = do
   return responses
 
 
-instance (DB.DB_Iface a, SerDe b) => KeyValueStore_Iface (KVSHandler a b) where
-  requests :: KVSHandler a b -> Vector.Vector KVRequest -> IO (Vector.Vector KVResponse)
+instance (DB.DB_Iface a) => KeyValueStore_Iface (KVSHandler a) where
+  requests :: KVSHandler a -> Vector.Vector KVRequest -> IO (Vector.Vector KVResponse)
   requests (KVSHandler stateRef) reqs = do
     state <- readIORef stateRef
     (responses,state') <- runStateT (execRequestsCoarse reqs) state

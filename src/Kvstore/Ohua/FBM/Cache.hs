@@ -21,23 +21,20 @@ import           Debug.Trace
 import           FuturesBasedMonad
 import           Control.DeepSeq
 import           Kvstore.Ohua.FBM.KVSTypes
-import           Kvstore.Ohua.FBM.KeyValueService (loadTableStateIdx,deserializeTableStateIdx)
 
-loadTableSF :: (DB.DB_Iface a, SerDe serde) => a -> T.Text -> StateT (LocalState serde) IO (Maybe BS.ByteString)
-loadTableSF db tableId = liftIO $ evalStateT (loadTable tableId) $ KVSState undefined db undefined
+loadTableSF :: (DB.DB_Iface a) => a -> T.Text -> StateT Stateless IO (Maybe BS.ByteString)
+loadTableSF db tableId = liftIO $ evalStateT (loadTable tableId) $ KVSState undefined db undefined undefined
 
-deserializeTableSF :: SerDe serde => BS.ByteString -> StateT (LocalState serde) IO Table
+deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
 deserializeTableSF d = do
-  (Serializer serde) <- get
-  (r, KVSState _ _ serde') <- liftIO $ runStateT (deserializeTable d) $ KVSState undefined undefined serde
-  put $ Serializer serde'
+  deser <- get
+  (r, KVSState _ _ _ deser') <- liftIO $ runStateT (deserializeTable d) $ KVSState undefined undefined undefined deser
+  put deser'
   return r
 
 -- algo
-loadCacheEntry :: (DB.DB_Iface db,
-                      SerDe serde,
-                      NFData serde)
-                  => KVStore -> db -> T.Text -> OhuaM (LocalState serde) (Maybe (T.Text, Table))
+loadCacheEntry :: (DB.DB_Iface db)
+                  => KVStore -> db -> T.Text -> OhuaM (Maybe (T.Text, Table))
 loadCacheEntry kvs db tableId =
   let table = Map.lookup tableId kvs
   in

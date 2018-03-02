@@ -25,7 +25,7 @@ library
                      , Database.DatabaseService
                      , KeyValueStore
                      , KeyValueStore_Iface
-                     , Kvstore.JSONSerialization
+                     , Kvstore.Serialization
                      , DB_Iface
                      , Db_Types
   other-modules:       KeyValueStore_Client
