@@ -90,6 +90,9 @@ executable db-service-exe
 test-suite kvstore-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
+  exposed-modules:     Microbenchmark
+                     , ServiceConfig
+                     , Requests
   main-is:             KvserviceTest.hs
   build-depends:       base
                      , kvstore

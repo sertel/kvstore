@@ -1,6 +1,4 @@
-{-# LANGUAGE InstanceSigs, FlexibleInstances #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE LambdaCase #-}
 
 import Test.HUnit hiding (State)
 import Test.Framework
@@ -22,39 +20,15 @@ import           Kvstore.Ohua.FBM.KVSTypes
 import qualified Kvstore.Ohua.FBM.KeyValueService   as KVSOhuaFBM
 
 import           Kvservice_Types
-import qualified DB_Iface                  as DB
-import           Db_Types
 
-
-type MockDB = IORef (HM.HashMap T.Text T.Text)
-
-instance DB.DB_Iface MockDB where
-  get :: MockDB -> T.Text -> IO DBResponse
-  get dbRef key = DBResponse . HM.lookup key <$> readIORef dbRef
-
-  put :: MockDB -> T.Text -> T.Text -> IO ()
-  put dbRef key value = do
-    db <- readIORef dbRef
-    let convert = \case (Just p) -> p; Nothing -> T.empty
-    let db' = HM.insert key value db
-    writeIORef dbRef db'
+import           Requests
+import           ServiceConfig
 
 initState :: IO (KVSState MockDB)
 initState = do
   db <- newIORef HM.empty
   return $ KVSState HM.empty (db :: MockDB) jsonSer jsonDeSer
 
-type ExecReqFn = V.Vector KVRequest -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-
-insertEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-insertEntry table key field value = (?execRequests . V.singleton)
-                                    $ KVRequest INSERT
-                                                (T.pack table)
-                                                (T.pack key)
-                                                Nothing
-                                                Nothing
-                                                $ Just $ HM.singleton (T.pack field) (T.pack value)
 
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do
@@ -68,15 +42,6 @@ singleInsert = do
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) db'
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
-
-deleteEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-deleteEntry table key = (?execRequests . V.singleton) $ KVRequest DELETE
-                                                                 (T.pack table)
-                                                                 (T.pack key)
-                                                                 Nothing
-                                                                 Nothing
-                                                                 Nothing
 
 singleDelete :: (?execRequests :: ExecReqFn) => Assertion
 singleDelete = do
@@ -92,17 +57,6 @@ singleDelete = do
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0") (T.pack "{}")) db'
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
 
-
-updateEntry :: (?execRequests :: ExecReqFn)
-            => String -> String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-updateEntry table key field value = (?execRequests . V.singleton)
-                                    $ KVRequest UPDATE
-                                                (T.pack table)
-                                                (T.pack key)
-                                                Nothing
-                                                Nothing
-                                                $ Just $ HM.singleton (T.pack field) (T.pack value)
-
 singleUpdate :: (?execRequests :: ExecReqFn) => Assertion
 singleUpdate = do
   s <- initState
@@ -117,16 +71,6 @@ singleUpdate = do
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-1\"}}")) db'
   assertEqual "cache has wrong data." HM.empty $ getKvs s'
-
-readEntry :: (?execRequests :: ExecReqFn)
-          => String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-readEntry table key field = (?execRequests . V.singleton)
-                            $ KVRequest READ
-                                        (T.pack table)
-                                        (T.pack key)
-                                        (Just $ Set.fromList [T.pack field])
-                                        Nothing
-                                        Nothing
 
 singleRead :: (?execRequests :: ExecReqFn) => Assertion
 singleRead = do
@@ -145,16 +89,6 @@ singleRead = do
                                       $ HM.singleton (T.pack "key-0")
                                       $ HM.singleton (T.pack "field-0") (T.pack "value-0"))
                                       $ getKvs s'
-
-scanEntry :: (?execRequests :: ExecReqFn)
-          => String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
-scanEntry table key field = (?execRequests . V.singleton)
-                            $ KVRequest SCAN
-                                        (T.pack table)
-                                        (T.pack key)
-                                        (Just $ Set.fromList [T.pack field])
-                                        (Just 3)
-                                        Nothing
 
 singleScan :: (?execRequests :: ExecReqFn) => Assertion
 singleScan = do
