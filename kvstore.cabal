@@ -90,10 +90,12 @@ executable db-service-exe
 test-suite kvstore-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  exposed-modules:     Microbenchmark
+  main-is:             KvserviceTest.hs
+  other-modules:       Microbenchmark
                      , ServiceConfig
                      , Requests
-  main-is:             KvserviceTest.hs
+                     , TestSetup
+                     , CorrectnessTests
   build-depends:       base
                      , kvstore
                      , mtl
@@ -103,6 +105,8 @@ test-suite kvstore-test
                      , text
                      , unordered-containers
                      , vector
+                     , random
+                     , lens
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-ds -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   default-language:    Haskell2010
 
