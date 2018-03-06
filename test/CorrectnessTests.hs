@@ -117,6 +117,21 @@ singleScan = do
                                                       ])
                                       $ getKvs s'
 
+multipleInserts :: (?execRequests :: ExecReqFn) => Assertion
+multipleInserts = do
+  s <- initState
+  (responses, s') <- flip runStateT s $ insertEntries "table-0" [("key-0","field-0","value-0")
+                                                                ,("key-1","field-1","value-1")]
+  -- traceM $ "\nresponses: " ++ show responses
+  -- traceM $ "\nkvs: " ++ (show $ getKvs state)
+  db' <- readIORef $ getDbBackend s'
+  -- traceM $ "\ndb: " ++ show db'
+  assertEqual "wrong response." (V.fromList  [ KVResponse INSERT (Just HM.empty) Nothing Nothing
+                                             , KVResponse INSERT (Just HM.empty) Nothing Nothing]) responses
+  assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-1\":\"value-1\"}}")) db'
+  assertEqual "cache has wrong data." HM.empty $ getKvs s'
+
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
                testCase "\n=======================================================" (return ())
@@ -126,5 +141,6 @@ suite name = [
              , testCase "updating a value" singleUpdate
              , testCase "reading a value" singleRead
              , testCase "scanning some values" singleScan
+             , testCase "multiple inserts in one batch" multipleInserts
              , testCase "=======================================================" (return ())
              ]

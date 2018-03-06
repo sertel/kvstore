@@ -9,6 +9,7 @@ import           Data.IORef
 
 import qualified DB_Iface                  as DB
 import           Db_Types
+import           Debug.Trace
 
 type MockDB = IORef (HM.HashMap T.Text T.Text)
 
@@ -19,6 +20,7 @@ instance DB.DB_Iface MockDB where
   put :: MockDB -> T.Text -> T.Text -> IO ()
   put dbRef key value = do
     db <- readIORef dbRef
+    -- traceM $ "key: " ++ show key
     let convert = \case (Just p) -> p; Nothing -> T.empty
     let db' = HM.insert key value db
     writeIORef dbRef db'

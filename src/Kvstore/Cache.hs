@@ -9,7 +9,7 @@ import qualified Data.ByteString.Lazy    as BS
 import           Control.Monad.State
 import qualified Data.Vector             as Vector
 import qualified Data.HashMap.Strict     as Map
-import qualified Data.Set                as Set
+import qualified Data.HashSet            as HS
 import           Data.Maybe
 
 import qualified DB_Iface                as DB
@@ -22,10 +22,13 @@ import           Debug.Trace
 -- TODO cache entry eviction etc. -> needs even more state to be stored
 
 findReads :: Vector.Vector KVRequest -> Vector.Vector KVRequest
-findReads = Vector.filter ((flip Set.member $ Set.fromList [READ,SCAN]) . kVRequest_op)
+findReads = Vector.filter ((flip HS.member $ HS.fromList [READ,SCAN]) . kVRequest_op)
 
 findWrites :: Vector.Vector KVRequest -> Vector.Vector KVRequest
-findWrites = Vector.filter ((flip Set.member $ Set.fromList [INSERT,UPDATE,DELETE]) . kVRequest_op)
+findWrites = Vector.filter ((flip HS.member $ HS.fromList [INSERT,UPDATE,DELETE]) . kVRequest_op)
+
+findInserts :: Vector.Vector KVRequest -> Vector.Vector KVRequest
+findInserts = Vector.filter ((flip HS.member $ HS.fromList [INSERT]) . kVRequest_op)
 
 loadCacheEntry :: (DB.DB_Iface a) => T.Text -> StateT (KVSState a) IO (Maybe (T.Text, Table))
 loadCacheEntry tableId = do
@@ -38,15 +41,29 @@ loadCacheEntry tableId = do
             Nothing -> return Nothing
             (Just v) -> Just . (tableId,) <$> deserializeTable v
 
-updateCacheEntry :: (T.Text, Table) -> StateT (KVSState a) IO ()
-updateCacheEntry (tableId, table) = do
+insertTableIntoCache :: (T.Text, Table) -> StateT (KVSState a) IO ()
+insertTableIntoCache (tableId, table) = do
   (KVSState kvs db ser deser) <- get
-  -- FIXME these might have to be merged in!
   let kvs' = Map.insert tableId table kvs
   put $ KVSState kvs' db ser deser
 
+mergeIntoCache :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a) IO ()
+mergeIntoCache tableId key Nothing = mergeIntoCache tableId key $ Just Map.empty
+mergeIntoCache tableId key (Just values) = do
+  (KVSState kvs db ser deser) <- get
+  let kvs' = case Map.lookup tableId kvs of
+                Nothing -> Map.insert tableId (Map.singleton key values) kvs
+                (Just table) -> Map.insert tableId (Map.insert key values table) kvs
+  put $ KVSState kvs' db ser deser
+
+mergeINSERTIntoCache :: KVRequest -> StateT (KVSState a) IO ()
+mergeINSERTIntoCache (KVRequest op table key fields recordCount values) =
+  case op of
+    INSERT -> mergeIntoCache table key values
+    _ -> error "invariant broken"
+
 updateCache :: [(T.Text, Table)] -> StateT (KVSState a) IO ()
-updateCache newEntries = (\_ -> return ()) =<< mapM updateCacheEntry newEntries
+updateCache newEntries = (\_ -> return ()) =<< mapM insertTableIntoCache newEntries
 
 refresh :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO ()
 refresh reqs = do
@@ -63,6 +80,7 @@ refresh reqs = do
 
   update_ newEntriesFromReads
   update_ newEntriesFromWrites
+  mapM_ mergeINSERTIntoCache $ findInserts reqs
 
   -- (\x -> traceM $ "updated cache: " ++ show (getKvs x)) =<< get
   where

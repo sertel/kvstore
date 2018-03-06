@@ -72,8 +72,8 @@ insert tableId key (Just values) = do
   s <- get
   cache <- (return . getKvs) s
   let table' = case HM.lookup tableId cache of
-                  (Just table) -> HM.insert key values table
-                  Nothing -> HM.singleton key values
+                  (Just table) -> table
+                  Nothing -> error "invariant broken"
   InOut.storeTable tableId =<< InOut.serializeTable table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 

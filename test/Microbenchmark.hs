@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Microbenchmark where
 
@@ -16,10 +18,16 @@ import qualified Data.HashMap.Strict       as HM
 import qualified Data.HashSet              as Set
 import           Data.List
 import qualified Data.Vector               as V
+import           Data.IORef
 
 import           Kvservice_Types
+import           Kvstore.KVSTypes
+
 import           Requests
 import           TestSetup
+import           ServiceConfig
+
+import           Debug.Trace
 
 valueTemplate v = "value-" ++ show v
 fieldTemplate f = "field-" ++ show f
@@ -31,22 +39,27 @@ instance RandomGen RangeGen where
   next (RangeGen lo hi g) = let (i,g') = randomR (lo,hi) g in (i, RangeGen lo hi g')
   split (RangeGen lo hi g) = let (g1,g2) = split g in (RangeGen lo hi g1, RangeGen lo hi g2)
 
-data BenchmarkState = BenchmarkState {
+data ConstGen = ConstGen Int
+instance RandomGen ConstGen where
+  next (ConstGen i) = (i, ConstGen $ i+1)
+  split (ConstGen i) = (ConstGen i, ConstGen i)
+
+data BenchmarkState g = BenchmarkState {
                         _fieldCount :: Int,
                         _fieldSelection :: RangeGen,
                         _valueSizeGen :: RangeGen,
                         _tableCount :: Int,
                         _tableSelection :: RangeGen,
-                        _keySelection :: RangeGen,
-                        _keyCount :: Int,
+                        _keySelection :: g,
                         _operationSelection :: RangeGen,
                         _fieldCountSelection :: RangeGen,
                         _scanCountSelection :: RangeGen
                       }
 
 makeLenses ''BenchmarkState
+-- lens does not work with RankNTypes :(
 
-createValue :: StateT BenchmarkState IO String
+createValue :: forall g. RandomGen g => StateT (BenchmarkState g) IO String
 createValue = do
   bmState <- get
   let valSizeGenerator = view valueSizeGen bmState
@@ -54,7 +67,7 @@ createValue = do
   put $ over valueSizeGen (const valSizeGenerator') bmState
   (return . concatMap valueTemplate . take size) [1,2..]
 
-createRequest :: StateT BenchmarkState IO KVRequest
+createRequest :: forall g. RandomGen g => StateT (BenchmarkState g) IO KVRequest
 createRequest = do
   bmState <- get
   let opSelector = view operationSelection bmState
@@ -74,14 +87,16 @@ createRequest = do
   case op of
         0 -> prepareINSERT table key <$> createINSERTEntry
         1 -> prepareUPDATE table key <$> createUPDATEEntry
-        2 -> return $ prepareDELETE table key
-        3 -> prepareREAD table key . Set.map fieldTemplate <$> getFields
-        4 -> prepareSCAN table key <$> getScanCount <*> (Set.map fieldTemplate <$> getFields)
+        2 -> prepareREAD table key . Set.map fieldTemplate <$> getFields
+        3 -> prepareSCAN table key <$> getScanCount <*> (Set.map fieldTemplate <$> getFields)
+        4 -> return $ prepareDELETE table key
         _ -> error $ "No such operation: " ++ show op
     where
+      getFieldsAndValues :: forall g. RandomGen g => [Int] -> StateT (BenchmarkState g) IO (HM.HashMap String String)
       getFieldsAndValues = fmap HM.fromList . mapM (\ i -> (,) <$> pure (fieldTemplate i) <*> createValue)
-      createINSERTEntry :: StateT BenchmarkState IO (HM.HashMap String String)
+      createINSERTEntry :: forall g. RandomGen g => StateT (BenchmarkState g) IO (HM.HashMap String String)
       createINSERTEntry = getFieldsAndValues . flip take  [1,2..] . view fieldCount =<< get
+      getFields :: forall g. RandomGen g => StateT (BenchmarkState g) IO (Set.HashSet Int)
       getFields = do
         s <- get
         let fieldCountGen = view fieldCountSelection s
@@ -94,7 +109,7 @@ createRequest = do
             s'' = over fieldSelection (const fieldSel') s'
         put s''
         return $ Set.fromList fields
-      createUPDATEEntry :: StateT BenchmarkState IO (HM.HashMap String String)
+      createUPDATEEntry :: forall g. RandomGen g => StateT (BenchmarkState g) IO (HM.HashMap String String)
       createUPDATEEntry = getFieldsAndValues . Set.toList =<< getFields
       getScanCount = do
         s <- get
@@ -103,24 +118,52 @@ createRequest = do
         put $ over scanCountSelection (const scanCountSel') s
         return scanCount
 
-workload :: Int -> StateT BenchmarkState IO (V.Vector KVRequest)
-workload operationCount = V.fromList <$> mapM (const createRequest) [0,1..operationCount]
+workload :: forall g. RandomGen g => Int -> StateT (BenchmarkState g) IO (V.Vector KVRequest)
+workload operationCount = V.fromList <$> mapM (const createRequest) [1..operationCount]
+
+showState :: KVSState MockDB -> IO String
+showState (KVSState cache dbRef _ _) = do
+  db <- readIORef dbRef
+  return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
 runBatch :: (?execRequests :: ExecReqFn) => Assertion
 runBatch =  do
   s <- initState
-  (requests,_) <- runStateT (workload 100) $ BenchmarkState
+  -- fill the db first
+  (requests,_) <- runStateT (workload 10) $ BenchmarkState
                                             10 -- _fieldCount
                                             (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
-                                            20 -- _tableCount
-                                            (RangeGen 0 20 $ mkStdGen 0) -- _tableSelection
-                                            (RangeGen 0 100 $ mkStdGen 0) -- _keySelection
-                                            100 -- _keyCount
-                                            (RangeGen 0 4 $ mkStdGen 0) -- _operationSelection
+                                            1 -- _tableCount
+                                            (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
+                                            (ConstGen 1) -- _keySelection
+                                            (RangeGen 0 0 $ mkStdGen 0) -- _operationSelection (INSERT only)
                                             (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
-  (responses, s') <- flip runStateT s $ ?execRequests requests
+  traceM "requests (INSERT):"
+  mapM (\i -> traceM $ show i ++ "\n" ) requests
+  (_, s') <- flip runStateT s $ ?execRequests requests
+
+  traceM "state after init:"
+  traceM =<< showState s'
+
+  -- then run some requests
+  (requests,_) <- runStateT (workload 10) $ BenchmarkState
+                                            10 -- _fieldCount
+                                            (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
+                                            (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
+                                            1 -- _tableCount
+                                            (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
+                                            (RangeGen 1 10 $ mkStdGen 0) -- _keySelection
+                                            (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+                                            (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
+                                            (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
+  traceM $ "requests:"
+  mapM (\i -> traceM $ show i ++ "\n" ) requests
+  (responses, s'') <- flip runStateT s' $ ?execRequests requests
+  traceM "???????????????????????????????????????"
+  traceM $ "responses:"
+  mapM (\i -> traceM $ show i ++ "\n" ) responses
   assertEqual "wrong number of responses" 100 $ length responses
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]

@@ -38,6 +38,6 @@ data KVSState a = KVSState {
                 , deserializer :: Deserialization
                          -- TODO compression/decompression algo
                          -- TODO (Encryption ) -- the encryption backend
-                       } --deriving (Generic)
+                       }
 
 newtype KVSHandler a = KVSHandler (IORef (KVSState a))

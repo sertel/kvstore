@@ -61,6 +61,8 @@ updateStoreTableState = ()
 updateStoreTableStateIdx = 12 :: Int
 loadTableState = ()
 loadTableStateIdx = 13 :: Int
+foldINSERTsIntoCacheState = ()
+foldINSERTsIntoCacheStateIdx = 14 :: Int
 
 globalState :: Serialization -> Deserialization -> [FuturesBasedMonad.S]
 globalState ser deser = [ toS foldIntoCacheState
@@ -77,6 +79,7 @@ globalState ser deser = [ toS foldIntoCacheState
                     , toS deleteStoreTableState
                     , toS updateStoreTableState
                     , toS loadTableState
+                    , toS foldINSERTsIntoCacheState
                     ]
 
 convertState :: [FuturesBasedMonad.S] -> (Serialization , Deserialization)

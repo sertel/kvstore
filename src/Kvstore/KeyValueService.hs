@@ -38,19 +38,25 @@ execRequestsFuncImp reqs = do
                                                     -- one could also just write:
                                                     -- Cache.updateCacheEntry entry
                                                     s <- get
-                                                    (_,s') <- liftIO $ runStateT (Cache.updateCacheEntry entry) s
+                                                    (_,s') <- liftIO $ runStateT (Cache.insertTableIntoCache entry) s
                                                     put s'
                                                   Nothing -> return ())
                                           newEntries)
                                           $ KVSState cache undefined undefined undefined
 
   -- request handling
-  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' ser undefined
+  (_, KVSState cache'' _ _ _) <- runStateT (mapM (\req -> do
+                                              s <- get
+                                              (_,s') <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) s
+                                              put s')
+                                              $ Cache.findInserts reqs)
+                                          $ KVSState cache' undefined undefined undefined
+  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache'' db' ser undefined
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache'' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined undefined
+  (_, KVSState cache''' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache'' undefined undefined undefined
 
-  put $ KVSState cache'' db'' ser' deser'
+  put $ KVSState cache''' db'' ser' deser'
   return responses
 
 -- the purely functional version explicitly folds over the cache!
@@ -64,18 +70,23 @@ execRequestsFunctional reqs = do
   cache' <- foldM (\c e ->
                     case e of
                       (Just entry) -> do
-                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.updateCacheEntry entry) $ KVSState c undefined undefined undefined
+                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.insertTableIntoCache entry) $ KVSState c undefined undefined undefined
                         return c'
                       Nothing -> return c)
                   cache newEntries
 
   -- request handling
-  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache' db' ser undefined
+  cache'' <- foldM (\c req -> do
+                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) $ KVSState c undefined undefined undefined
+                        return c'
+                      )
+                  cache' $ Cache.findInserts reqs
+  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache'' db' ser undefined
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache'' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache' undefined undefined undefined
+  (_, KVSState cache''' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache'' undefined undefined undefined
 
-  put $ KVSState cache'' db'' ser' deser'
+  put $ KVSState cache''' db'' ser' deser'
   return responses
 
 -- coarse-grained:
@@ -103,9 +114,10 @@ execRequestsFine :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSSta
 execRequestsFine reqs = do
   -- cache management: load all entries needed to process the requests
   newEntries <- mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs]
-  (\_ -> return ()) =<< (mapM Cache.updateCacheEntry . catMaybes) newEntries
+  (\_ -> return ()) =<< (mapM Cache.insertTableIntoCache . catMaybes) newEntries
 
   -- request handling
+  mapM_ Cache.mergeINSERTIntoCache $ Cache.findInserts reqs
   responses <- mapM RH.serve reqs
   -- (\x -> traceM $ "cache after request handling: " ++ show x) . getKvs =<< get
 

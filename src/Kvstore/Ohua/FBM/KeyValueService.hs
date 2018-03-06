@@ -34,9 +34,15 @@ foldIntoCache =
   foldM (\c e ->
             case e of
               (Just entry) -> do
-                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.updateCacheEntry entry) $ KVSState c undefined undefined undefined
+                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.insertTableIntoCache entry) $ KVSState c undefined undefined undefined
                 return c'
               Nothing -> return c)
+
+foldINSERTsIntoCache :: KVStore -> [KVRequest] -> StateT Stateless IO KVStore
+foldINSERTsIntoCache =
+  foldM (\c req -> do
+                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) $ KVSState c undefined undefined undefined
+                return c')
 
 execRequestsOhua :: (DB.DB_Iface db)
                  => KVStore -> db -> Vector.Vector KVRequest
@@ -51,9 +57,11 @@ execRequestsOhua cache db reqs = do
 
   cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
 
-  responses <- smap (RH.serve cache' db) $ Vector.toList reqs
-  cache'' <- liftWithIndex foldEvictFromCacheStateIdx (foldEvictFromCache cache') reqs
-  return (Vector.fromList responses, cache'', db)
+  cache'' <- liftWithIndex foldINSERTsIntoCacheStateIdx (foldINSERTsIntoCache cache') $ Vector.toList $ Cache.findInserts reqs
+
+  responses <- smap (RH.serve cache'' db) $ Vector.toList reqs
+  cache''' <- liftWithIndex foldEvictFromCacheStateIdx (foldEvictFromCache cache'') reqs
+  return (Vector.fromList responses, cache''', db)
 
 
 execRequestsFunctional :: (DB.DB_Iface db, NFData db)

@@ -31,6 +31,11 @@ insertEntry :: (?execRequests :: ExecReqFn)
             => String -> String -> String -> String -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
 insertEntry table key field = ?execRequests . V.singleton . prepareINSERT table key . HM.singleton field
 
+insertEntries :: (?execRequests :: ExecReqFn)
+            => String -> [(String,String,String)] -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
+insertEntries table = ?execRequests . V.fromList . map (\(k,f,v) -> prepareINSERT table k $ HM.singleton f v)
+
+
 prepareDELETE :: String -> String -> KVRequest
 prepareDELETE table key = KVRequest DELETE
                                     (T.pack table)
