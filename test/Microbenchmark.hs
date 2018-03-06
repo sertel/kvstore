@@ -39,10 +39,10 @@ instance RandomGen RangeGen where
   next (RangeGen lo hi g) = let (i,g') = randomR (lo,hi) g in (i, RangeGen lo hi g')
   split (RangeGen lo hi g) = let (g1,g2) = split g in (RangeGen lo hi g1, RangeGen lo hi g2)
 
-data ConstGen = ConstGen Int
-instance RandomGen ConstGen where
-  next (ConstGen i) = (i, ConstGen $ i+1)
-  split (ConstGen i) = (ConstGen i, ConstGen i)
+newtype LinearGen = LinearGen Int
+instance RandomGen LinearGen where
+  next (LinearGen i) = (i, LinearGen $ i+1)
+  split (LinearGen i) = (LinearGen i, LinearGen i)
 
 data BenchmarkState g = BenchmarkState {
                         _fieldCount :: Int,
@@ -130,41 +130,42 @@ runBatch :: (?execRequests :: ExecReqFn) => Assertion
 runBatch =  do
   s <- initState
   -- fill the db first
-  (requests,_) <- runStateT (workload 10) $ BenchmarkState
+  (requests,_) <- runStateT (workload 100) $ BenchmarkState
                                             10 -- _fieldCount
                                             (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
                                             1 -- _tableCount
                                             (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-                                            (ConstGen 1) -- _keySelection
+                                            (LinearGen 1) -- _keySelection
                                             (RangeGen 0 0 $ mkStdGen 0) -- _operationSelection (INSERT only)
                                             (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
-  traceM "requests (INSERT):"
-  mapM (\i -> traceM $ show i ++ "\n" ) requests
+  -- traceM "requests (INSERT):"
+  -- mapM (\i -> traceM $ show i ++ "\n" ) requests
   (_, s') <- flip runStateT s $ ?execRequests requests
 
-  traceM "state after init:"
-  traceM =<< showState s'
+  -- traceM "state after init:"
+  -- traceM =<< showState s'
+  traceM "done with insert."
 
   -- then run some requests
-  (requests,_) <- runStateT (workload 10) $ BenchmarkState
+  (requests,_) <- runStateT (workload 1000) $ BenchmarkState
                                             10 -- _fieldCount
                                             (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
                                             1 -- _tableCount
                                             (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-                                            (RangeGen 1 10 $ mkStdGen 0) -- _keySelection
+                                            (RangeGen 1 1000 $ mkStdGen 0) -- _keySelection
                                             (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
                                             (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
-  traceM $ "requests:"
-  mapM (\i -> traceM $ show i ++ "\n" ) requests
-  (responses, s'') <- flip runStateT s' $ ?execRequests requests
-  traceM "???????????????????????????????????????"
-  traceM $ "responses:"
-  mapM (\i -> traceM $ show i ++ "\n" ) responses
-  assertEqual "wrong number of responses" 100 $ length responses
+  -- traceM $ "requests:"
+  -- mapM (\i -> traceM $ show i ++ "\n" ) requests
+  (responses, s'') <- requests `seq` flip runStateT s' $ ?execRequests requests
+  -- traceM "???????????????????????????????????????"
+  -- traceM $ "responses:"
+  -- mapM (\i -> traceM $ show i ++ "\n" ) responses
+  responses `seq` assertEqual "wrong number of responses" 100 $ length responses
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
