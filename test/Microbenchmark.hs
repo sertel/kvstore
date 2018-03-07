@@ -19,6 +19,7 @@ import qualified Data.HashSet              as Set
 import           Data.List
 import qualified Data.Vector               as V
 import           Data.IORef
+import           Data.Time.Clock
 
 import           Kvservice_Types
 import           Kvstore.KVSTypes
@@ -128,9 +129,11 @@ showState (KVSState cache dbRef _ _) = do
 
 runBatch :: (?execRequests :: ExecReqFn) => Assertion
 runBatch =  do
+  let keyCount = 2000
+      operationCount = 20
   s <- initState
   -- fill the db first
-  (requests,_) <- runStateT (workload 100) $ BenchmarkState
+  (requests,_) <- runStateT (workload keyCount) $ BenchmarkState
                                             10 -- _fieldCount
                                             (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
@@ -146,22 +149,25 @@ runBatch =  do
 
   -- traceM "state after init:"
   -- traceM =<< showState s'
-  traceM "done with insert."
+  -- traceM "done with insert."
 
   -- then run some requests
-  (requests,_) <- runStateT (workload 1000) $ BenchmarkState
+  (requests,_) <- runStateT (workload operationCount) $ BenchmarkState
                                             10 -- _fieldCount
                                             (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
                                             1 -- _tableCount
                                             (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-                                            (RangeGen 1 1000 $ mkStdGen 0) -- _keySelection
+                                            (RangeGen 1 keyCount $ mkStdGen 0) -- _keySelection
                                             (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
                                             (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
+  start <- getCurrentTime
   (responses, s'') <- requests `seq` flip runStateT s' $ ?execRequests requests
+  stop <- getCurrentTime
+  traceM $ "exec time: " ++ show (diffUTCTime stop start)
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) responses

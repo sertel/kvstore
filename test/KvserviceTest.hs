@@ -13,11 +13,15 @@ import Microbenchmark (suite)
 runSuite =
   defaultMainWithOpts
     (
-       (let ?execRequests = KVS.execRequestsCoarse            in suite "coarse-grained imperative")
-    -- ++ (let ?execRequests = KVS.execRequestsFine              in suite "fine-grained imperative")
-    -- ++ (let ?execRequests = KVS.execRequestsFuncImp           in suite "functional-imperative")
-    -- ++ (let ?execRequests = KVS.execRequestsFunctional        in suite "purely functional")
-    -- ++ (let ?execRequests = KVSOhuaFBM.execRequestsFunctional in suite "Ohua - FBM")
+      -- (let ?execRequests = KVS.execRequestsCoarse            in suite "coarse-grained imperative")
+      -- ++
+      -- (let ?execRequests = KVS.execRequestsFine              in suite "fine-grained imperative")
+      -- ++
+      -- (let ?execRequests = KVS.execRequestsFuncImp           in suite "functional-imperative")
+      -- ++
+      -- (let ?execRequests = KVS.execRequestsFunctional        in suite "purely functional")
+      -- ++
+      (let ?execRequests = KVSOhuaFBM.execRequestsFunctional in suite "Ohua - FBM")
     )
     mempty
 
