@@ -19,7 +19,7 @@ import qualified Data.HashSet              as Set
 import           Data.List
 import qualified Data.Vector               as V
 import           Data.IORef
-import           Data.Time.Clock
+import           Data.Time.Clock.POSIX
 
 import           Kvservice_Types
 import           Kvstore.KVSTypes
@@ -27,6 +27,8 @@ import           Kvstore.KVSTypes
 import           Requests
 import           TestSetup
 import           ServiceConfig
+
+import           Statistics.Sample (mean)
 
 import           Debug.Trace
 
@@ -127,10 +129,7 @@ showState (KVSState cache dbRef _ _) = do
   db <- readIORef dbRef
   return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
-runBatch :: (?execRequests :: ExecReqFn) => Assertion
-runBatch =  do
-  let keyCount = 2000
-      operationCount = 20
+loadDB keyCount = do
   s <- initState
   -- fill the db first
   (requests,_) <- runStateT (workload keyCount) $ BenchmarkState
@@ -145,38 +144,68 @@ runBatch =  do
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
-  (_, s') <- flip runStateT s $ ?execRequests requests
+  (responses, s') <- flip runStateT s $ ?execRequests requests
+  responses `seq` assertEqual "wrong number of responses" keyCount $ length responses
+  return s'
 
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
 
-  -- then run some requests
-  (requests,_) <- runStateT (workload operationCount) $ BenchmarkState
-                                            10 -- _fieldCount
-                                            (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
-                                            (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
-                                            1 -- _tableCount
-                                            (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-                                            (RangeGen 1 keyCount $ mkStdGen 0) -- _keySelection
-                                            (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
-                                            (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
-                                            (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
+reqBenchmarkState keyCount = BenchmarkState
+                                10 -- _fieldCount
+                                (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
+                                (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
+                                1 -- _tableCount
+                                (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
+                                (RangeGen 1 keyCount $ mkStdGen 0) -- _keySelection
+                                (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+                                (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
+                                (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
+
+currentTimeMillis = round . (* 1000) <$> getPOSIXTime
+
+-- then run some requests
+-- runRequests :: (?execRequests :: ExecReqFn)
+--             => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
+runRequests operationCount keyCount bmState s = do
+  (requests,_) <- runStateT (workload operationCount) bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
-  start <- getCurrentTime
-  (responses, s'') <- requests `seq` flip runStateT s' $ ?execRequests requests
-  stop <- getCurrentTime
-  traceM $ "exec time: " ++ show (diffUTCTime stop start)
+  start <- currentTimeMillis
+  (responses, s') <- requests `seq` flip runStateT s $ ?execRequests requests
+  stop <- currentTimeMillis
+  let execTime = stop - start
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) responses
-  responses `seq` assertEqual "wrong number of responses" 100 $ length responses
+  responses `seq` assertEqual "wrong number of responses" operationCount $ length responses
+  return (s',execTime)
+
+runSingleBatch :: (?execRequests :: ExecReqFn) => Int -> Int -> IO ()
+runSingleBatch keyCount reqCount = do
+  (_, execTime) <- runRequests reqCount keyCount (reqBenchmarkState keyCount) =<< loadDB keyCount
+  traceM $ "exec time: " ++ show execTime
+  return ()
+
+runMultipleBatches :: (?execRequests :: ExecReqFn) => Int -> Int -> Int -> IO ()
+runMultipleBatches keyCount reqCount batchCount = do
+   s <- loadDB keyCount
+   let bmState = reqBenchmarkState keyCount
+   (_, execTimes) <- foldM (\ (st,execTimes) _ -> do
+                                (st',execTime) <- runRequests reqCount keyCount bmState st
+                                return $ st' `seq` (st',execTimes ++ [execTime]))
+                           (s,[])
+                           $ take batchCount [1,2..]
+   let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
+   traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
+   return ()
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
                testCase "\n=======================================================" (return ())
              , testCase ("*** Running the " ++ name ++ " version: ***") (return ())
-             , testCase "running batch" runBatch
+             -- , testCase "running batch" $ runSingleBatch 2000 20
+             , testCase "running multiple batches" $ runMultipleBatches 2000 20 20
              , testCase "=======================================================" (return ())
              ]
