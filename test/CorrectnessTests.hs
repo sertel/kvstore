@@ -24,6 +24,7 @@ import           Kvservice_Types
 import           Requests
 import           ServiceConfig
 import           TestSetup
+import           Versions
 
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do
@@ -141,3 +142,5 @@ suite name = [
              , testCase "scanning some values" singleScan
              , testCase "multiple inserts in one batch" multipleInserts
              ]
+
+buildSuite = map (\(version, name) -> testGroup name $ let ?execRequests=version in suite name) versions

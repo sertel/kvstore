@@ -5,3 +5,4 @@
 .stack-work/
 *.dump-simpl
 .idea
+*.json

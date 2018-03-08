@@ -12,7 +12,10 @@ import Test.Framework.Providers.HUnit
 
 import           System.Random
 import           Control.Monad.State
+import           Control.Monad
 import           Control.Lens
+
+import GHC.Conc.Sync (setNumCapabilities)
 
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.HashSet              as Set
@@ -20,13 +23,15 @@ import           Data.List
 import qualified Data.Vector               as V
 import           Data.IORef
 import           Data.Time.Clock.POSIX
-
+import           Data.Aeson                as AE
+import           Data.ByteString.Lazy      as BS (writeFile)
 import           Kvservice_Types
 import           Kvstore.KVSTypes
 
 import           Requests
 import           TestSetup
 import           ServiceConfig
+import           Versions
 
 import           Statistics.Sample (mean)
 
@@ -188,7 +193,7 @@ runSingleBatch keyCount reqCount = do
   traceM $ "exec time: " ++ show execTime
   return ()
 
-runMultipleBatches :: (?execRequests :: ExecReqFn) => Int -> Int -> Int -> IO ()
+runMultipleBatches :: (?execRequests :: ExecReqFn) => Int -> Int -> Int -> IO Double
 runMultipleBatches keyCount reqCount batchCount = do
    s <- loadDB keyCount
    let bmState = reqBenchmarkState keyCount
@@ -198,11 +203,27 @@ runMultipleBatches keyCount reqCount batchCount = do
                            (s,[])
                            $ take batchCount [1,2..]
    let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
-   traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
-   return ()
+   -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
+   return meanExecTime
 
-suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
-suite name = [
-             -- , testCase "running batch" $ runSingleBatch 2000 20
-              testCase "running multiple batches" $ runMultipleBatches 2000 20 20
-             ]
+runMultipleBatches_ :: (?execRequests :: ExecReqFn) => Int -> Int -> Int -> IO ()
+runMultipleBatches_ keyCount reqCount batchCount = (\e -> traceM $ "mean execution time: " ++ show e ++ " ms") =<< runMultipleBatches keyCount reqCount batchCount
+
+data ScalabilityResult = ScalabilityResult { version :: String
+                                           , results :: [Double] }
+
+scalability name numThreads = do
+    results <- foldM (\res n -> do
+                      _ <- setNumCapabilities n
+                      r <- runMultipleBatches 2000 20 20
+                      return $ res ++ [r])
+                    []
+                    $ take numThreads [1,2..]
+    return (name,results)
+
+buildSuite =
+  [testCase "Done!" runAsSingleTest]
+  where
+    runAsSingleTest = do
+      results <- forM versions $ \(version, name) -> let ?execRequests = version in scalability name 2
+      BS.writeFile "scalability.json" $ AE.encode $ HM.fromList results
