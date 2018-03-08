@@ -7,24 +7,26 @@ import Test.Framework.Providers.HUnit
 import qualified Kvstore.KeyValueService   as KVS
 import qualified Kvstore.Ohua.FBM.KeyValueService   as KVSOhuaFBM
 
--- import CorrectnessTests (suite)
-import Microbenchmark (suite)
+import CorrectnessTests (suite)
+-- import Microbenchmark (suite)
 
-runSuite =
-  defaultMainWithOpts
-    (
-      (let ?execRequests = KVS.execRequestsCoarse            in suite "coarse-grained imperative")
-      ++
-      (let ?execRequests = KVS.execRequestsFine              in suite "fine-grained imperative")
-      ++
-      (let ?execRequests = KVS.execRequestsFuncImp           in suite "functional-imperative")
-      ++
-      (let ?execRequests = KVS.execRequestsFunctional        in suite "purely functional")
-      ++
-      (let ?execRequests = KVSOhuaFBM.execRequestsFunctional in suite "Ohua - FBM")
-      -- ++
-    )
-    mempty
+versions =
+  [
+      let ?execRequests = KVS.execRequestsCoarse            in testGroup "\nCoarse-grained imperative version" $ suite "coarse-grained imperative"
+  ,
+      let ?execRequests = KVS.execRequestsFine              in testGroup "\nFine-grained imperative version" $ suite "fine-grained imperative"
+  ,
+      let ?execRequests = KVS.execRequestsFuncImp           in testGroup "\nFunctional-imperative version" $ suite "functional-imperative"
+  ,
+      let ?execRequests = KVS.execRequestsFunctional        in testGroup "\nPurely functional version" $ suite "purely functional"
+  ,
+      let ?execRequests = KVSOhuaFBM.execRequestsFunctional in testGroup "\nOhua - FBM version" $ suite "Ohua - FBM"
+  ]
+
+runSuite = defaultMainWithOpts versions mempty
+
+runSuiteSequentially = defaultMainWithOpts [mutuallyExclusive $ testGroup "\nSequential run" versions] mempty
 
 main :: IO ()
-main = runSuite
+-- main = runSuite
+main = runSuiteSequentially

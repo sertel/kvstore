@@ -203,9 +203,6 @@ runMultipleBatches keyCount reqCount batchCount = do
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
-               testCase "\n=======================================================" (return ())
-             , testCase ("*** Running the " ++ name ++ " version: ***") (return ())
              -- , testCase "running batch" $ runSingleBatch 2000 20
-             , testCase "running multiple batches" $ runMultipleBatches 2000 20 20
-             , testCase "=======================================================" (return ())
+              testCase "running multiple batches" $ runMultipleBatches 2000 20 20
              ]

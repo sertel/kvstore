@@ -134,13 +134,10 @@ multipleInserts = do
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [
-               testCase "\n=======================================================" (return ())
-             , testCase ("*** Running the " ++ name ++ " version: ***") (return ())
-             , testCase "inserting a value" singleInsert
+               testCase "inserting a value" singleInsert
              , testCase "deleting a value" singleDelete
              , testCase "updating a value" singleUpdate
              , testCase "reading a value" singleRead
              , testCase "scanning some values" singleScan
              , testCase "multiple inserts in one batch" multipleInserts
-             , testCase "=======================================================" (return ())
              ]
