@@ -33,6 +33,9 @@ import           TestSetup
 import           ServiceConfig
 import           Versions
 
+import Options.Applicative
+import Data.Semigroup ((<>))
+
 import           Statistics.Sample (mean)
 
 import           Debug.Trace
@@ -221,9 +224,19 @@ scalability name numThreads = do
                     $ take numThreads [1,2..]
     return (name,results)
 
-buildSuite =
+buildSuite (BenchmarkConfig maxThreadCount) =
   [testCase "Done!" runAsSingleTest]
   where
     runAsSingleTest = do
-      results <- forM versions $ \(version, name) -> let ?execRequests = version in scalability name 2
+      results <- forM versions $ \(version, name) -> let ?execRequests = version in scalability name maxThreadCount
       BS.writeFile "scalability.json" $ AE.encode $ HM.fromList results
+
+data BenchmarkConfig = BenchmarkConfig { maxThreadCount :: Int }
+
+benchmarkOptionsParser = BenchmarkConfig <$> (read <$> strOption
+                                                         ( short 't'
+                                                        <> long "num-threads"
+                                                        <> metavar "NUM_THREADS"
+                                                        <> help "Maximum number of threads."
+                                                        <> showDefault
+                                                        <> value "8" ))
