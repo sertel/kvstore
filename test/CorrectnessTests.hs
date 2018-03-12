@@ -17,7 +17,6 @@ import           Debug.Trace
 
 import           Kvstore.Serialization
 import           Kvstore.KVSTypes
-import           Kvstore.Ohua.FBM.KVSTypes
 
 import           Kvservice_Types
 

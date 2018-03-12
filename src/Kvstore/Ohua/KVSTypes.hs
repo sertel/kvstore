@@ -29,6 +29,7 @@ instance NFData Deserialization where
 --
 
 type Stateless = ()
+
 foldIntoCacheState = ()
 foldIntoCacheStateIdx = 0 :: Int
 foldEvictFromCacheState = ()

@@ -19,41 +19,61 @@ import           Kvstore.KVSTypes
 import qualified DB_Iface                             as DB
 import           Debug.Trace
 
-import           FuturesBasedMonad
-import           Control.DeepSeq
+import           Monad.StreamsBasedFreeMonad
+import           Monad.StreamsBasedExplicitAPI
+import           Data.Dynamic2
 
 import           Kvstore.Ohua.KeyValueService
 import qualified Kvstore.Ohua.SBFM.Cache               as CF
-import           Kvstore.Ohua.KVSTypes
 import qualified Kvstore.Ohua.SBFM.RequestHandling     as RH (serve)
+import           Kvstore.Ohua.SBFM.KVSTypes            as SFBMTypes
+import           Kvstore.Ohua.KVSTypes
 
-execRequestsOhua :: (DB.DB_Iface db)
-                 => KVStore -> db -> Vector.Vector KVRequest
-                 -> OhuaM (Vector.Vector KVResponse, KVStore, db)
+
+execRequestsOhua :: (DB.DB_Iface db, Typeable db)
+                 => Var KVStore -> Var db -> Var (Vector.Vector KVRequest)
+                 -> ASTM [Dynamic] (Var (Vector.Vector KVResponse, KVStore, db))
 execRequestsOhua cache db reqs = do
 
   -- FIXME if the db is folded over then this also turns into a fold.
   --       this fold can later on be optimized in the streams version
   --       because only the final step of loading the data is essentially
   --       to be folded over!
-  newEntries <- smap (CF.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
+  genReq <- liftWithIndex reqGeneratorStateIdx
+                          ((\r -> return [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest ->  StateT Stateless IO [T.Text])
+                          reqs
+  newEntries <- smap (CF.loadCacheEntry cache db) genReq
 
-  cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
+  cache' <- lift2WithIndex foldIntoCacheStateIdx
+                           foldIntoCache cache newEntries
 
-  cache'' <- liftWithIndex foldINSERTsIntoCacheStateIdx (foldINSERTsIntoCache cache') $ Vector.toList $ Cache.findInserts reqs
+  cache'' <- lift2WithIndex foldINSERTsIntoCacheStateIdx
+                           (\c r -> foldINSERTsIntoCache c $ Vector.toList $ Cache.findInserts r)
+                           cache' reqs
 
-  responses <- smap (RH.serve cache'' db) $ Vector.toList reqs
-  cache''' <- liftWithIndex foldEvictFromCacheStateIdx (foldEvictFromCache cache'') reqs
-  return (Vector.fromList responses, cache''', db)
+  listReq <- liftWithIndex reqsToListStateIdx
+                           (return . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [KVRequest])
+                           reqs
+  responses <- smap (RH.serve cache'' db) listReq
+  cache''' <- lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache'' reqs
+  lift3WithIndex finalResultStateIdx
+                 ((\r c d -> return (Vector.fromList r, c, d)) :: [KVResponse] -> KVStore -> db -> StateT Stateless IO (Vector.Vector KVResponse, KVStore, db))
+                 responses cache''' db
 
 
-execRequestsFunctional :: (DB.DB_Iface db, NFData db)
+execRequestsFunctional :: (DB.DB_Iface db, Typeable db)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
   (KVSState cache db ser deser) <- get
-  ((responses, cache'', db''), serde')
-                <- liftIO $ runOhuaM (execRequestsOhua cache db reqs) $ globalState ser deser
-  let (ser',deser') = convertState serde'
-  put $ KVSState cache'' db'' ser' deser'
+  (responses, cache'', db'')
+                <- liftIO $ runOhuaM -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
+                                     (do
+                                       c <- sfConst' cache
+                                       d <- sfConst' db
+                                       r <- sfConst' reqs
+                                       execRequestsOhua c d r)
+                                     $ SFBMTypes.globalState ser deser
+  -- let (ser',deser') = convertState serde'
+  put $ KVSState cache'' db'' ser deser
   return responses

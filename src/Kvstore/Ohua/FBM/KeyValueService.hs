@@ -19,7 +19,7 @@ import           Kvstore.KVSTypes
 import qualified DB_Iface                             as DB
 import           Debug.Trace
 
-import           FuturesBasedMonad
+import           Monad.FuturesBasedMonad
 import           Control.DeepSeq
 
 import           Kvstore.Ohua.KeyValueService

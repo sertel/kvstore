@@ -20,7 +20,7 @@ import           Kvstore.KVSTypes
 import qualified Kvstore.RequestHandling    as RH
 import qualified Kvstore.InputOutput        as InOut
 
-import           FuturesBasedMonad
+import           Monad.FuturesBasedMonad
 import           Kvstore.Ohua.KVSTypes
 import           Control.DeepSeq            as DS
 import           Debug.Trace
