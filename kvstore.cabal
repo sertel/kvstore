@@ -18,9 +18,13 @@ library
   exposed-modules:     Kvstore.KeyValueService
                      , Kvstore.Cache
                      , Kvstore.KVSTypes
+                     , Kvstore.Ohua.Cache
+                     , Kvstore.Ohua.KeyValueService
+                     , Kvstore.Ohua.KVSTypes
                      , Kvstore.Ohua.FBM.Cache
                      , Kvstore.Ohua.FBM.KeyValueService
-                     , Kvstore.Ohua.FBM.KVSTypes
+                     , Kvstore.Ohua.SBFM.Cache
+                     , Kvstore.Ohua.SBFM.KeyValueService
                      , Kvservice_Types
                      , Database.DatabaseService
                      , KeyValueStore
@@ -30,7 +34,10 @@ library
                      , Db_Types
   other-modules:       KeyValueStore_Client
                      , Kvstore.InputOutput
+                     , Kvstore.Ohua.RequestHandling
                      , Kvstore.Ohua.FBM.RequestHandling
+                     , Kvstore.Ohua.SBFM.RequestHandling
+                     , Kvstore.Ohua.SBFM.KVSTypes
                      , Kvstore.RequestHandling
                      , Kvservice_Consts
                      , DB

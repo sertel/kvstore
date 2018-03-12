@@ -18,19 +18,10 @@ import           Kvstore.InputOutput
 
 import           Debug.Trace
 
-import           FuturesBasedMonad
+import           Monad.FuturesBasedMonad
 import           Control.DeepSeq
-import           Kvstore.Ohua.FBM.KVSTypes
-
-loadTableSF :: (DB.DB_Iface a) => a -> T.Text -> StateT Stateless IO (Maybe BS.ByteString)
-loadTableSF db tableId = liftIO $ evalStateT (loadTable tableId) $ KVSState undefined db undefined undefined
-
-deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
-deserializeTableSF d = do
-  deser <- get
-  (r, KVSState _ _ _ deser') <- liftIO $ runStateT (deserializeTable d) $ KVSState undefined undefined undefined deser
-  put deser'
-  return r
+import           Kvstore.Ohua.KVSTypes
+import           Kvstore.Ohua.Cache
 
 -- algo
 loadCacheEntry :: (DB.DB_Iface db)

@@ -22,27 +22,10 @@ import           Debug.Trace
 import           FuturesBasedMonad
 import           Control.DeepSeq
 
-import qualified Kvstore.Ohua.FBM.Cache               as CacheO
-import           Kvstore.Ohua.FBM.KVSTypes
+import           Kvstore.Ohua.KeyValueService
+import qualified Kvstore.Ohua.FBM.Cache               as CF
+import           Kvstore.Ohua.KVSTypes
 import qualified Kvstore.Ohua.FBM.RequestHandling     as RH (serve)
-
-foldEvictFromCache :: KVStore -> Vector.Vector KVRequest -> StateT Stateless IO KVStore
-foldEvictFromCache cache = return . foldl (\c r -> Map.delete (kVRequest_table r) c) cache . Cache.findWrites
-
-foldIntoCache :: KVStore -> [Maybe (T.Text, Table)] -> StateT Stateless IO KVStore
-foldIntoCache =
-  foldM (\c e ->
-            case e of
-              (Just entry) -> do
-                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.insertTableIntoCache entry) $ KVSState c undefined undefined undefined
-                return c'
-              Nothing -> return c)
-
-foldINSERTsIntoCache :: KVStore -> [KVRequest] -> StateT Stateless IO KVStore
-foldINSERTsIntoCache =
-  foldM (\c req -> do
-                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) $ KVSState c undefined undefined undefined
-                return c')
 
 execRequestsOhua :: (DB.DB_Iface db)
                  => KVStore -> db -> Vector.Vector KVRequest
@@ -53,7 +36,7 @@ execRequestsOhua cache db reqs = do
   --       this fold can later on be optimized in the streams version
   --       because only the final step of loading the data is essentially
   --       to be folded over!
-  newEntries <- smap (CacheO.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
+  newEntries <- smap (CF.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
 
   cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
 
