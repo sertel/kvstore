@@ -4,12 +4,12 @@ packages:
 - .
 - location:
     git: git@bitbucket.org:nrink/statefulness
-    commit: 8a784c352fad8ca8966c7fb7c14da788b1fb51a4
+    commit: 204ef30b86dcbb71fc6327ad53825435186745a0
     # ../statefulness # for debugging only
   extra-dep: true
 - location:
     git: git@github.com:ohua-dev/ohua-core
-    commit: 8b982a27f335e480982c0f47f966962ee8bf7bb9
+    commit: a8ec3284d39f619bce4eefdcf5d5c04bf4df8b18
   extra-dep: true
 extra-deps:
 - thrift-0.10.0
