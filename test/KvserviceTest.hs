@@ -1,19 +1,24 @@
+{-# LANGUAGE ImplicitParams #-}
 
-import Test.HUnit hiding (State)
-import Test.Framework
-import Test.Framework.Providers.HUnit
+import           Test.Framework
+import           Test.Framework.Providers.HUnit
+import           Test.HUnit                        hiding (State)
 
-import Options.Applicative
-import Data.Semigroup ((<>))
+import           Data.Semigroup                    ((<>))
+import           Options.Applicative
 
-import qualified Kvstore.KeyValueService   as KVS
-import qualified Kvstore.Ohua.FBM.KeyValueService   as KVSOhuaFBM
+import qualified Kvstore.KeyValueService           as KVS
+import qualified Kvstore.Ohua.FBM.KeyValueService  as KVSOhuaFBM
+import qualified Kvstore.Ohua.SBFM.KeyValueService as KVSOhuaSBFM
 
-import qualified CorrectnessTests as CT (buildSuite)
-import qualified Microbenchmark as MB (buildSuite, benchmarkOptionsParser, BenchmarkConfig)
+import qualified CorrectnessTests                  as CT (buildSuite)
+import qualified CorrectnessTests                  as CT
+import qualified Microbenchmark                    as MB (BenchmarkConfig,
+                                                          benchmarkOptionsParser,
+                                                          buildSuite)
 
 data Config = Config { testOrBench :: String
-                     , bmConfig :: MB.BenchmarkConfig }
+                     , bmConfig    :: MB.BenchmarkConfig }
 
 config :: Parser Config
 config = Config

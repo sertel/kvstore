@@ -4,8 +4,8 @@ packages:
 - .
 - location:
     git: git@bitbucket.org:nrink/statefulness
-    commit: 204ef30b86dcbb71fc6327ad53825435186745a0
-    # ../statefulness # for debugging only
+    commit: 095cc3c4c280f3947a733ede1313b5f0a867bea2
+    #../statefulness # for debugging only
   extra-dep: true
 - location:
     git: git@github.com:ohua-dev/ohua-core
