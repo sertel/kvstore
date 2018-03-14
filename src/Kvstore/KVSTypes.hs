@@ -27,17 +27,40 @@ data Deserialization = forall state. NFData state => Deserialization
   }
 
 -- FIXME turn into ADT
-class Compression a where
-  compress :: a -> BS.ByteString -> BS.ByteString
-  decompress :: a -> BS.ByteString -> BS.ByteString
+data Compression = forall state. NFData state => Compression
+  {
+    _compress :: state -> BS.ByteString -> (BS.ByteString, state)
+  , _compState :: state
+}
 
-data KVSState a = KVSState {
+data Decompression = forall state. NFData state => Decompression
+  {
+    _decompress :: state -> BS.ByteString -> (BS.ByteString, state)
+  , _decompState :: state
+  }
+
+data Encryption = forall state. NFData state => Encryption
+  {
+    _encrypt :: state -> BS.ByteString -> (BS.ByteString, state)
+  , _encState :: state
+  }
+
+data Decryption = forall state. NFData state => Decryption
+  {
+    _decrypt :: state -> BS.ByteString -> (BS.ByteString, state)
+  , _decState :: state
+  }
+
+data KVSState a = KVSState
+                {
                   getKvs :: KVStore -- the cache (kv-store)
                 , getDbBackend :: DB.DB_Iface a => a -- the storage backend
                 , serializer :: Serialization
                 , deserializer :: Deserialization
-                         -- TODO compression/decompression algo
-                         -- TODO (Encryption ) -- the encryption backend
-                       }
+                , compression :: Compression
+                , decompression :: Decompression
+                , encryption :: Encryption
+                , decryption :: Decryption
+                }
 
 newtype KVSHandler a = KVSHandler (IORef (KVSState a))
