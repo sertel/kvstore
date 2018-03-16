@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Kvstore.KVSTypes where
 
@@ -11,6 +12,7 @@ import           Data.IORef
 import qualified DB_Iface               as DB
 
 import           Control.DeepSeq
+import           Control.Lens
 
 type Fields = Map.HashMap T.Text T.Text
 type Table = Map.HashMap T.Text Fields
@@ -21,17 +23,22 @@ data Serialization = forall state. NFData state => Serialization
   , _serState :: state
   }
 
+makeLenses ''Serialization
+
 data Deserialization = forall state. NFData state => Deserialization
   { _deserialize :: state -> BS.ByteString -> (Table, state)
   , _deSerState :: state
   }
 
--- FIXME turn into ADT
+makeLenses ''Deserialization
+
 data Compression = forall state. NFData state => Compression
   {
     _compress :: state -> BS.ByteString -> (BS.ByteString, state)
   , _compState :: state
 }
+
+makeLenses ''Compression
 
 data Decompression = forall state. NFData state => Decompression
   {
@@ -39,11 +46,15 @@ data Decompression = forall state. NFData state => Decompression
   , _decompState :: state
   }
 
+makeLenses ''Decompression
+
 data Encryption = forall state. NFData state => Encryption
   {
     _encrypt :: state -> BS.ByteString -> (BS.ByteString, state)
   , _encState :: state
   }
+
+makeLenses ''Encryption
 
 data Decryption = forall state. NFData state => Decryption
   {
@@ -51,16 +62,28 @@ data Decryption = forall state. NFData state => Decryption
   , _decState :: state
   }
 
+makeLenses ''Decryption
+
 data KVSState a = KVSState
                 {
-                  getKvs :: KVStore -- the cache (kv-store)
-                , getDbBackend :: DB.DB_Iface a => a -- the storage backend
-                , serializer :: Serialization
-                , deserializer :: Deserialization
-                , compression :: Compression
-                , decompression :: Decompression
-                , encryption :: Encryption
-                , decryption :: Decryption
+                  _cache :: KVStore
+                , _storage :: DB.DB_Iface a => a
+                , _serializer :: Serialization
+                , _deserializer :: Deserialization
+                , _compression :: Compression
+                , _decompression :: Decompression
+                , _encryption :: Encryption
+                , _decryption :: Decryption
                 }
+
+makeLenses ''KVSState
+
+emptyKVSState = KVSState undefined
+                         undefined
+                         undefined
+                         undefined
+                         undefined
+                         undefined
+                         undefined
 
 newtype KVSHandler a = KVSHandler (IORef (KVSState a))

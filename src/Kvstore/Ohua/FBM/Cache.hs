@@ -4,9 +4,9 @@ module Kvstore.Ohua.FBM.Cache where
 
 import           Kvservice_Types
 
+import           Control.Monad.State
 import qualified Data.Text.Lazy          as T
 import qualified Data.ByteString.Lazy    as BS
-import           Control.Monad.State
 import qualified Data.Vector             as Vector
 import qualified Data.HashMap.Strict     as Map
 import qualified Data.Set                as Set

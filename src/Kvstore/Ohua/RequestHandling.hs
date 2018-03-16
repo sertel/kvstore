@@ -25,12 +25,10 @@ import           Debug.Trace
 
 
 read_ :: KVStore -> T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT Stateless IO KVResponse
-read_ cache tableId key fields = liftIO . flip evalStateT (KVSState cache undefined undefined undefined) $ RH.read_ tableId key fields
--- FIXME Why is this not working?!
--- read_ cache = liftIO . flip evalStateT (KVSState cache undefined undefined) . RH.read_
+read_ c tableId key fields = liftIO . flip evalStateT KVSState{_cache=c} $ RH.read_ tableId key fields
 
 scan :: KVStore -> T.Text -> T.Text -> Maybe Int32 -> StateT Stateless IO KVResponse
-scan cache tableId key count = liftIO . flip evalStateT (KVSState cache undefined undefined undefined) $ RH.scan tableId key count
+scan c tableId key count = liftIO . flip evalStateT KVSState{_cache=c} $ RH.scan tableId key count
 
 calculateUpdate :: KVStore -> T.Text -> T.Text -> HM.HashMap T.Text T.Text -> StateT Stateless IO Table
 calculateUpdate cache tableId key values =
@@ -54,9 +52,10 @@ calculateDelete cache tableId key values = return $ case HM.lookup tableId cache
 serializeTable :: Table -> StateT Serialization IO BS.ByteString
 serializeTable table = do
   ser <- get
-  (r, KVSState _ _ ser' _) <- liftIO $ runStateT (InOut.serializeTable table) $ KVSState undefined undefined ser undefined
+  (r, KVSState{_serializer=ser'})
+          <- liftIO $ runStateT (InOut.serializeTable table) $ KVSState{_serializer=ser}
   put ser'
   return r
 
 storeTable :: (DB.DB_Iface db) => db -> T.Text -> BS.ByteString -> StateT Stateless IO ()
-storeTable db tableId value = liftIO $ evalStateT (InOut.storeTable tableId value) $ KVSState undefined db undefined undefined
+storeTable db tableId value = liftIO $ evalStateT (InOut.storeTable tableId value) KVSState{_storage=db}

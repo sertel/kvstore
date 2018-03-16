@@ -2,12 +2,14 @@
 
 module Kvstore.RequestHandling where
 
+import           Control.Monad.State
+import           Control.Lens
+
 import           KeyValueStore_Iface
 import           Kvservice_Types
 import qualified Data.Text.Lazy          as T
 import qualified Data.HashSet            as Set
 import qualified Data.HashMap.Strict     as HM
-import           Control.Monad.State
 import           Data.IORef
 import qualified Data.Vector             as Vector
 import           Data.Maybe
@@ -26,8 +28,8 @@ import           Debug.Trace
 read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a) IO KVResponse
 read_ table key Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
 read_ table key (Just fields) = do
-  tables <- getKvs <$> get
-  case HM.lookup table tables of
+  s@KVSState{_cache=cache} <- get
+  case HM.lookup table cache of
     Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such table!"
     (Just valTable) -> case HM.lookup key valTable of
                           Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such key!"
@@ -42,8 +44,8 @@ read_ table key (Just fields) = do
 scan :: T.Text -> T.Text -> Maybe Int32 -> StateT (KVSState a) IO KVResponse
 scan table key Nothing = return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no record count specified!"
 scan table key (Just recordCount) = do
-  tables <- getKvs <$> get
-  case HM.lookup table tables of
+  s@KVSState{_cache=cache} <- get
+  case HM.lookup table cache of
     Nothing -> return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
     (Just valTable) -> do
                         let collected = (Vector.fromList . collect . List.sortBy (compare `on` fst) . HM.toList) valTable
@@ -56,8 +58,7 @@ scan table key (Just recordCount) = do
 update :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 update table key Nothing = update table key $ Just HM.empty
 update tableId key (Just values) = do
-  s <- get
-  cache <- (return . getKvs) s
+  s@KVSState{_cache=cache} <- get
   let table = case HM.lookup tableId cache of { (Just t) -> t; Nothing -> HM.empty }
   let vals' = case HM.lookup key table of
               Nothing -> values
@@ -69,8 +70,7 @@ update tableId key (Just values) = do
 insert :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 insert table key Nothing = insert table key $ Just HM.empty
 insert tableId key (Just values) = do
-  s <- get
-  cache <- (return . getKvs) s
+  s@KVSState{_cache=cache} <- get
   let table' = case HM.lookup tableId cache of
                   (Just table) -> table
                   Nothing -> error "invariant broken"
@@ -79,8 +79,7 @@ insert tableId key (Just values) = do
 
 delete :: (DB.DB_Iface a) => T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete tableId key = do
-  s <- get
-  cache <- (return . getKvs) s
+  s@KVSState{_cache=cache} <- get
   case HM.lookup tableId cache of
         (Just table) -> InOut.storeTable tableId =<< InOut.serializeTable (HM.delete key table)
         Nothing -> return ()

@@ -33,8 +33,8 @@ import           TestSetup
 import           ServiceConfig
 import           Versions
 
-import Options.Applicative
-import Data.Semigroup ((<>))
+import           Options.Applicative
+import           Data.Semigroup ((<>))
 
 import           Statistics.Sample (mean)
 
@@ -133,7 +133,7 @@ workload :: forall g. RandomGen g => Int -> StateT (BenchmarkState g) IO (V.Vect
 workload operationCount = V.fromList <$> mapM (const createRequest) [1..operationCount]
 
 showState :: KVSState MockDB -> IO String
-showState (KVSState cache dbRef _ _) = do
+showState KVSState{_cache=cache, _storage=dbRef} = do
   db <- readIORef dbRef
   return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 

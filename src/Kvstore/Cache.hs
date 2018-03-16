@@ -3,10 +3,10 @@
 module Kvstore.Cache where
 
 import           Kvservice_Types
-
+import           Control.Monad.State
+import           Control.Lens
 import qualified Data.Text.Lazy          as T
 import qualified Data.ByteString.Lazy    as BS
-import           Control.Monad.State
 import qualified Data.Vector             as Vector
 import qualified Data.HashMap.Strict     as Map
 import qualified Data.HashSet            as HS
@@ -22,17 +22,18 @@ import           Debug.Trace
 -- TODO cache entry eviction etc. -> needs even more state to be stored
 
 findReads :: Vector.Vector KVRequest -> Vector.Vector KVRequest
-findReads = Vector.filter ((flip HS.member $ HS.fromList [READ,SCAN]) . kVRequest_op)
+findReads = Vector.filter (flip HS.member (HS.fromList [READ,SCAN]) . kVRequest_op)
 
 findWrites :: Vector.Vector KVRequest -> Vector.Vector KVRequest
-findWrites = Vector.filter ((flip HS.member $ HS.fromList [INSERT,UPDATE,DELETE]) . kVRequest_op)
+findWrites = Vector.filter (flip HS.member (HS.fromList [INSERT,UPDATE,DELETE]) . kVRequest_op)
 
 findInserts :: Vector.Vector KVRequest -> Vector.Vector KVRequest
-findInserts = Vector.filter ((flip HS.member $ HS.fromList [INSERT]) . kVRequest_op)
+findInserts = Vector.filter (flip HS.member  (HS.fromList [INSERT]) . kVRequest_op)
 
 loadCacheEntry :: (DB.DB_Iface a) => T.Text -> StateT (KVSState a) IO (Maybe (T.Text, Table))
 loadCacheEntry tableId = do
-  (KVSState kvs db ser deser) <- get
+  kvsstate <- get
+  let kvs = view cache kvsstate
   case Map.lookup tableId kvs of
       (Just table) -> return $ Just (tableId, table)
       Nothing -> do
@@ -43,18 +44,20 @@ loadCacheEntry tableId = do
 
 insertTableIntoCache :: (T.Text, Table) -> StateT (KVSState a) IO ()
 insertTableIntoCache (tableId, table) = do
-  (KVSState kvs db ser deser) <- get
-  let kvs' = Map.insert tableId table kvs
-  put $ KVSState kvs' db ser deser
+  kvsstate <- get
+  let kvs = view cache kvsstate
+      kvs' = Map.insert tableId table kvs
+  put $ over cache (const kvs') kvsstate
 
 mergeIntoCache :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a) IO ()
 mergeIntoCache tableId key Nothing = mergeIntoCache tableId key $ Just Map.empty
 mergeIntoCache tableId key (Just values) = do
-  (KVSState kvs db ser deser) <- get
-  let kvs' = case Map.lookup tableId kvs of
+  kvsstate <- get
+  let kvs = view cache kvsstate
+      kvs' = case Map.lookup tableId kvs of
                 Nothing -> Map.insert tableId (Map.singleton key values) kvs
                 (Just table) -> Map.insert tableId (Map.insert key values table) kvs
-  put $ KVSState kvs' db ser deser
+  put $ over cache (const kvs') kvsstate
 
 mergeINSERTIntoCache :: KVRequest -> StateT (KVSState a) IO ()
 mergeINSERTIntoCache (KVRequest op table key fields recordCount values) =
@@ -100,8 +103,9 @@ refresh reqs = do
 update :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 update table key Nothing = update table key $ Just Map.empty
 update table key (Just values) = do
-   (KVSState tables db ser deser) <- get
-   case Map.lookup table tables of
+   kvsstate <- get
+   let kvs = view cache kvsstate
+   case Map.lookup table kvs of
      Nothing -> return $ KVResponse UPDATE Nothing Nothing $ Just $ T.pack "no such table!"
      (Just valTable) ->
        case Map.lookup key valTable of
@@ -109,39 +113,41 @@ update table key (Just values) = do
          (Just fields) -> do
            let fields' =  Map.union values fields
            let valTable' = Map.insert key fields' valTable
-           let kvs' = Map.insert table valTable' tables
-           put $ KVSState kvs' db ser deser
+           let kvs' = Map.insert table valTable' kvs
+           put $ over cache (const kvs') kvsstate
            return $ KVResponse UPDATE (Just Map.empty) Nothing Nothing
 
 insert :: T.Text -> T.Text -> Maybe (Map.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 insert table key Nothing = insert table key $ Just Map.empty
 insert table key (Just values) = do
-   (KVSState kvs db ser deser) <- get
-   case Map.lookup table kvs of
-     Nothing -> return $ KVResponse INSERT Nothing Nothing $ Just $ T.pack "no such table!"
-     (Just valTable) -> do
-          let valTable' = Map.insert key values valTable
-          let kvs' = Map.insert table valTable' kvs
-          put $ KVSState kvs' db ser deser
-          return $ KVResponse INSERT (Just Map.empty) Nothing Nothing
+  kvsstate <- get
+  let kvs = view cache kvsstate
+  case Map.lookup table kvs of
+    Nothing -> return $ KVResponse INSERT Nothing Nothing $ Just $ T.pack "no such table!"
+    (Just valTable) -> do
+        let valTable' = Map.insert key values valTable
+        let kvs' = Map.insert table valTable' kvs
+        put $ over cache (const kvs') kvsstate
+        return $ KVResponse INSERT (Just Map.empty) Nothing Nothing
 
 delete :: T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete table key = do
-  (KVSState kvs db ser deser) <- get
+  kvsstate <- get
+  let kvs = view cache kvsstate
   case Map.lookup table kvs of -- probably something that should be done even before request processing
     Nothing -> return $ KVResponse DELETE Nothing Nothing $ Just $ T.pack "no such table!"
     (Just valTable) -> do
          let valTable' = Map.delete key valTable
          let kvs' = Map.adjust (const valTable') key kvs
-         put $ KVSState kvs' db ser deser
+         put $ over cache (const kvs') kvsstate
          return $ KVResponse DELETE Nothing Nothing Nothing
 
 invalidateReq :: KVRequest -> StateT (KVSState a) IO ()
 invalidateReq req = do
-    -- FIXME I should probably use lenses!
-    (KVSState kvs db ser deser) <- get
-    let kvs' = Map.delete (kVRequest_table req) kvs
-    put $ KVSState kvs' db ser deser
+    kvsstate <- get
+    let kvs = view cache kvsstate
+        kvs' = Map.delete (kVRequest_table req) kvs
+    put $ over cache (const kvs') kvsstate
 
 -- very coarse-grained, I know
 invalidate :: Vector.Vector KVRequest -> StateT (KVSState a) IO ()

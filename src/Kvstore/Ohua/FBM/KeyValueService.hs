@@ -4,10 +4,11 @@ module Kvstore.Ohua.FBM.KeyValueService where
 
 import           KeyValueStore_Iface
 import           Kvservice_Types
+import           Control.Monad.State
+import           Control.Lens
 import qualified Data.Text.Lazy                       as T
 import qualified Data.HashSet                         as Set
 import qualified Data.HashMap.Strict                  as Map
-import           Control.Monad.State
 import           Data.IORef
 import qualified Data.Vector                          as Vector
 import           Data.Maybe
@@ -51,9 +52,9 @@ execRequestsFunctional :: (DB.DB_Iface db, NFData db)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
-  (KVSState cache db ser deser) <- get
+  kvsstate@KVSState{_cache=cache_, _storage=db, _serializer=ser, _deserializer=deser} <- get
   ((responses, cache'', db''), serde')
-                <- liftIO $ runOhuaM (execRequestsOhua cache db reqs) $ globalState ser deser
+                <- liftIO $ runOhuaM (execRequestsOhua cache_ db reqs) $ globalState ser deser
   let (ser',deser') = convertState serde'
-  put $ KVSState cache'' db'' ser' deser'
+  put kvsstate{_storage=db'', _cache=cache'', _serializer=ser', _deserializer=deser}
   return responses

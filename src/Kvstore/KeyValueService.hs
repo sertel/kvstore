@@ -5,10 +5,11 @@ module Kvstore.KeyValueService where
 
 import           KeyValueStore_Iface
 import           Kvservice_Types
+import           Control.Monad.State
+import           Control.Lens
 import qualified Data.Text.Lazy          as T
 import qualified Data.HashSet            as Set
 import qualified Data.HashMap.Strict     as Map
-import           Control.Monad.State
 import           Data.IORef
 import qualified Data.Vector             as Vector
 import           Data.Maybe
@@ -25,68 +26,80 @@ import           Debug.Trace
 -- mapM to update the cache.
 execRequestsFuncImp :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFuncImp reqs = do
-  (KVSState cache db ser deser) <- get
+  (KVSState cache_ db ser deser comp decomp enc dec) <- get
 
   -- cache management: load all entries needed to process the requests
-  (newEntries, KVSState _ db' _ deser') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
-                                                            $ KVSState cache db ser deser
+  (newEntries, KVSState{_storage=db', _deserializer=deser', _decompression=decomp', _decryption=dec})
+                  <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
+                                        $ KVSState {_cache = cache_, _storage = db, _deserializer = deser, _decompression=decomp, _decryption=dec}
 
   -- mapM here actually folds over the cache! (mapM is a sequential 'for-loop' over the state by definition!)
-  (_, KVSState cache' _ _ _) <- runStateT (mapM (\case
-                                                  (Just entry) -> do
-                                                    -- I wrote this very explicitly here to show what happens with the state.
-                                                    -- one could also just write:
-                                                    -- Cache.updateCacheEntry entry
-                                                    s <- get
-                                                    (_,s') <- liftIO $ runStateT (Cache.insertTableIntoCache entry) s
-                                                    put s'
-                                                  Nothing -> return ())
-                                          newEntries)
-                                          $ KVSState cache undefined undefined undefined
+  KVSState{_cache=cache'} <- execStateT (mapM (\case
+                                              (Just entry) -> do
+                                                -- I wrote this very explicitly here to show what happens with the state.
+                                                -- one could also just write:
+                                                -- Cache.updateCacheEntry entry
+                                                s <- get
+                                                (_,s') <- liftIO $ runStateT (Cache.insertTableIntoCache entry) s
+                                                put s'
+                                              Nothing -> return ())
+                                           newEntries)
+                                        $ KVSState{ _cache=cache_ }
 
   -- request handling
-  (_, KVSState cache'' _ _ _) <- runStateT (mapM (\req -> do
+  KVSState{_cache=cache''} <- execStateT (mapM (\req -> do
                                               s <- get
                                               (_,s') <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) s
                                               put s')
-                                              $ Cache.findInserts reqs)
-                                          $ KVSState cache' undefined undefined undefined
-  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache'' db' ser undefined
+                                           $ Cache.findInserts reqs)
+                                          $ KVSState{ _cache=cache' }
+  (responses, KVSState _ db'' ser' _ comp' _ enc' _)
+                            <- liftIO $ runStateT (mapM RH.serve reqs)
+                                                  $ KVSState{_cache=cache'', _storage=db', _serializer=ser, _compression=comp, _encryption=enc}
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache''' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache'' undefined undefined undefined
+  KVSState{_cache=cache'''} <- liftIO $ execStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs)
+                                                   $ KVSState{_cache=cache''}
 
-  put $ KVSState cache''' db'' ser' deser'
+  put $ KVSState cache''' db'' ser' deser' comp' decomp' enc dec
   return responses
 
 -- the purely functional version explicitly folds over the cache!
 execRequestsFunctional :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
   -- cache management: load all entries needed to process the requests
-  (KVSState cache db ser deser) <- get
-  (newEntries, KVSState _ db' _ deser') <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
-                                                              $ KVSState cache db undefined deser
+  (KVSState cache db ser deser comp decomp enc dec) <- get
+  (newEntries, KVSState{_storage=db', _deserializer=deser', _decompression=decomp', _decryption=dec'})
+                                <- liftIO $ runStateT (mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs])
+                                                      KVSState{_cache=cache, _storage=db, _deserializer=deser, _decompression=decomp, _decryption=dec}
 
   cache' <- foldM (\c e ->
                     case e of
                       (Just entry) -> do
-                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.insertTableIntoCache entry) $ KVSState c undefined undefined undefined
+                        (_, KVSState {_cache=c'})
+                            <- liftIO $ runStateT (Cache.insertTableIntoCache entry)
+                                                  KVSState{_cache=c}
                         return c'
                       Nothing -> return c)
                   cache newEntries
 
   -- request handling
   cache'' <- foldM (\c req -> do
-                        (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) $ KVSState c undefined undefined undefined
+                        (_, KVSState{_cache=c'})
+                            <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req)
+                                                  KVSState{_cache=c}
                         return c'
                       )
                   cache' $ Cache.findInserts reqs
-  (responses, KVSState _ db'' ser' _) <- liftIO $ runStateT (mapM RH.serve reqs) $ KVSState cache'' db' ser undefined
+  (responses, KVSState{_storage=db'', _serializer=ser', _compression=comp', _encryption=enc'})
+                                <- liftIO $ runStateT (mapM RH.serve reqs)
+                                                      KVSState{_cache=cache'', _storage=db', _serializer=ser, _compression=comp, _encryption=enc}
 
   -- cache management: propagate side-effects to cache
-  (_, KVSState cache''' _ _ _) <- liftIO $ runStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs) $ KVSState cache'' undefined undefined undefined
+  KVSState{_cache=cache'''} <- liftIO $ execStateT ((mapM_  Cache.invalidateReq . Cache.findWrites) reqs)
+                                                   KVSState{_cache=cache''}
 
-  put $ KVSState cache''' db'' ser' deser'
+  put $ KVSState cache''' db'' ser' deser' comp' decomp' enc dec
   return responses
 
 -- coarse-grained:

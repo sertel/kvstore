@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy    as BS
 import           Data.Maybe
 import           Control.Monad.State
 import           Control.Monad.IO.Class
+import           Control.Lens
 
 import           KeyValueStore_Iface
 import           Kvservice_Types

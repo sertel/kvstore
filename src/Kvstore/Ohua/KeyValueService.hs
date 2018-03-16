@@ -4,10 +4,11 @@ module Kvstore.Ohua.KeyValueService where
 
 import           KeyValueStore_Iface
 import           Kvservice_Types
+import           Control.Monad.State
+import           Control.Lens
 import qualified Data.Text.Lazy                       as T
 import qualified Data.HashSet                         as Set
 import qualified Data.HashMap.Strict                  as Map
-import           Control.Monad.State
 import           Data.IORef
 import qualified Data.Vector                          as Vector
 import           Data.Maybe
@@ -29,12 +30,12 @@ foldIntoCache =
   foldM (\c e ->
             case e of
               (Just entry) -> do
-                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.insertTableIntoCache entry) $ KVSState c undefined undefined undefined
-                return c'
+                (_, kvsstate') <- liftIO $ runStateT (Cache.insertTableIntoCache entry) KVSState{_cache=c}
+                return $ view cache kvsstate'
               Nothing -> return c)
 
 foldINSERTsIntoCache :: KVStore -> [KVRequest] -> StateT Stateless IO KVStore
 foldINSERTsIntoCache =
   foldM (\c req -> do
-                (_, KVSState c' _ _ _) <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) $ KVSState c undefined undefined undefined
-                return c')
+                (_, kvsstate') <- liftIO $ runStateT (Cache.mergeINSERTIntoCache req) KVSState{_cache=c}
+                return $ view cache kvsstate')

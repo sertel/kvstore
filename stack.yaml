@@ -4,7 +4,7 @@ packages:
 - .
 - location:
     git: git@bitbucket.org:nrink/statefulness
-    commit: 095cc3c4c280f3947a733ede1313b5f0a867bea2
+    commit: 21504696033655a1ea1f952263c65eedbe38deab
     #../statefulness # for debugging only
   extra-dep: true
 - location:

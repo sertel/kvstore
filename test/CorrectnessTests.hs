@@ -31,12 +31,12 @@ singleInsert = do
   (responses, s') <- flip runStateT s $ insertEntry "table-0" "key-0" "field-0" "value-0"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs state)
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse INSERT (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) db'
-  assertEqual "cache has wrong data." HM.empty $ getKvs s'
+  assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleDelete :: (?execRequests :: ExecReqFn) => Assertion
 singleDelete = do
@@ -46,11 +46,11 @@ singleDelete = do
                                 deleteEntry "table-0" "key-0"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse DELETE (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0") (T.pack "{}")) db'
-  assertEqual "cache has wrong data." HM.empty $ getKvs s'
+  assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleUpdate :: (?execRequests :: ExecReqFn) => Assertion
 singleUpdate = do
@@ -60,12 +60,12 @@ singleUpdate = do
                                 updateEntry "table-0" "key-0" "field-0" "value-1"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse UPDATE (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-1\"}}")) db'
-  assertEqual "cache has wrong data." HM.empty $ getKvs s'
+  assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleRead :: (?execRequests :: ExecReqFn) => Assertion
 singleRead = do
@@ -75,7 +75,7 @@ singleRead = do
                                 readEntry "table-0" "key-0" "field-0"
   -- traceM $ "responses: " ++ show responses
   -- traceM $ "kvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "db: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse READ (Just $ HM.singleton (T.pack "field-0") (T.pack "value-0")) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
@@ -83,7 +83,7 @@ singleRead = do
   assertEqual "cache has wrong data." (HM.singleton (T.pack "table-0")
                                       $ HM.singleton (T.pack "key-0")
                                       $ HM.singleton (T.pack "field-0") (T.pack "value-0"))
-                                      $ getKvs s'
+                                      $ _cache s'
 
 singleScan :: (?execRequests :: ExecReqFn) => Assertion
 singleScan = do
@@ -93,7 +93,7 @@ singleScan = do
                                 scanEntry "table-0" "key-1" "field-0"
   -- traceM $ "responses: " ++ show responses
   -- traceM $ "kvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "db: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse
                                                   SCAN
@@ -115,7 +115,7 @@ singleScan = do
                                                       , (T.pack "key-4", HM.singleton (T.pack "field-0") (T.pack "value-4"))
                                                       , (T.pack "key-5", HM.singleton (T.pack "field-0") (T.pack "value-5"))
                                                       ])
-                                      $ getKvs s'
+                                      $ _cache s'
 
 multipleInserts :: (?execRequests :: ExecReqFn) => Assertion
 multipleInserts = do
@@ -124,13 +124,13 @@ multipleInserts = do
                                                                 ,("key-1","field-1","value-1")]
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs state)
-  db' <- readIORef $ getDbBackend s'
+  db' <- readIORef $ _storage s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.fromList  [ KVResponse INSERT (Just HM.empty) Nothing Nothing
                                              , KVResponse INSERT (Just HM.empty) Nothing Nothing]) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
                                                                (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-1\":\"value-1\"}}")) db'
-  assertEqual "cache has wrong data." HM.empty $ getKvs s'
+  assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]
 suite name = [

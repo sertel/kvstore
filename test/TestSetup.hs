@@ -13,4 +13,4 @@ import           ServiceConfig
 initState :: IO (KVSState MockDB)
 initState = do
   db <- newIORef HM.empty
-  return $ KVSState HM.empty (db :: MockDB) jsonSer jsonDeSer
+  return $ KVSState HM.empty (db :: MockDB) jsonSer jsonDeSer undefined undefined undefined undefined
