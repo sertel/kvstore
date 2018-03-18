@@ -22,8 +22,19 @@ import           Kvservice_Types
 
 import           Requests
 import           ServiceConfig
-import           TestSetup
 import           Versions
+
+initState :: IO (KVSState MockDB)
+initState = do
+  db <- newIORef HM.empty
+  return $ KVSState HM.empty
+                    (db :: MockDB)
+                    jsonSer
+                    jsonDeSer
+                    noComp
+                    noDecomp
+                    undefined
+                    undefined
 
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do

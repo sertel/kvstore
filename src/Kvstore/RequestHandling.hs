@@ -64,7 +64,7 @@ update tableId key (Just values) = do
               Nothing -> values
               (Just vals) -> HM.union values vals
   let table' = HM.insert key vals' table
-  InOut.storeTable tableId =<< InOut.serializeTable table'
+  InOut.store tableId table'
   return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
 
 insert :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
@@ -74,14 +74,14 @@ insert tableId key (Just values) = do
   let table' = case HM.lookup tableId cache of
                   (Just table) -> table
                   Nothing -> error "invariant broken"
-  InOut.storeTable tableId =<< InOut.serializeTable table'
+  InOut.store tableId table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
 delete :: (DB.DB_Iface a) => T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete tableId key = do
   s@KVSState{_cache=cache} <- get
   case HM.lookup tableId cache of
-        (Just table) -> InOut.storeTable tableId =<< InOut.serializeTable (HM.delete key table)
+        (Just table) -> InOut.store tableId $ HM.delete key table
         Nothing -> return ()
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 

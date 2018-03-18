@@ -1,4 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
 
 import           Test.Framework
 import           Test.Framework.Providers.HUnit
@@ -12,7 +11,6 @@ import qualified Kvstore.Ohua.FBM.KeyValueService  as KVSOhuaFBM
 import qualified Kvstore.Ohua.SBFM.KeyValueService as KVSOhuaSBFM
 
 import qualified CorrectnessTests                  as CT (buildSuite)
-import qualified CorrectnessTests                  as CT
 import qualified Microbenchmark                    as MB (BenchmarkConfig,
                                                           benchmarkOptionsParser,
                                                           buildSuite)

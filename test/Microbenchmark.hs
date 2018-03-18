@@ -27,9 +27,9 @@ import           Data.Aeson                as AE
 import           Data.ByteString.Lazy      as BS (writeFile)
 import           Kvservice_Types
 import           Kvstore.KVSTypes
+import           Kvstore.Serialization
 
 import           Requests
-import           TestSetup
 import           ServiceConfig
 import           Versions
 
@@ -39,6 +39,18 @@ import           Data.Semigroup ((<>))
 import           Statistics.Sample (mean)
 
 import           Debug.Trace
+
+initState :: IO (KVSState MockDB)
+initState = do
+  db <- newIORef HM.empty
+  return $ KVSState HM.empty
+                    (db :: MockDB)
+                    jsonSer
+                    jsonDeSer
+                    zlibComp
+                    zlibDecomp
+                    undefined
+                    undefined
 
 valueTemplate v = "value-" ++ show v
 fieldTemplate f = "field-" ++ show f

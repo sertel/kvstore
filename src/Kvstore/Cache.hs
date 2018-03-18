@@ -36,11 +36,7 @@ loadCacheEntry tableId = do
   let kvs = view cache kvsstate
   case Map.lookup tableId kvs of
       (Just table) -> return $ Just (tableId, table)
-      Nothing -> do
-          serializedValTable <- loadTable tableId
-          case serializedValTable of
-            Nothing -> return Nothing
-            (Just v) -> Just . (tableId,) <$> deserializeTable v
+      Nothing -> load tableId
 
 insertTableIntoCache :: (T.Text, Table) -> StateT (KVSState a) IO ()
 insertTableIntoCache (tableId, table) = do
