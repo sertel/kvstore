@@ -24,6 +24,13 @@ import           Kvstore.Ohua.KVSTypes
 import           Kvstore.Ohua.Cache
 
 -- algo
+prepareCacheEntry :: BS.ByteString -> OhuaM Table
+prepareCacheEntry serializedValTable = do
+  decrypted <- liftWithIndex decryptTableStateIdx decryptTableSF serializedValTable
+  decompressed <- liftWithIndex decompressTableStateIdx decompressTableSF decrypted
+  deserialized <- liftWithIndex deserializeTableStateIdx deserializeTableSF decompressed
+  return deserialized
+
 loadCacheEntry :: (DB.DB_Iface db)
                   => KVStore -> db -> T.Text -> OhuaM (Maybe (T.Text, Table))
 loadCacheEntry kvs db tableId =
@@ -36,7 +43,7 @@ loadCacheEntry kvs db tableId =
             serializedValTable <- liftWithIndex loadTableStateIdx (loadTableSF db) tableId
             case_ (isJust serializedValTable)
              [
-               (True , Just . (tableId,) <$> liftWithIndex deserializeTableStateIdx deserializeTableSF (fromJust serializedValTable))
+               (True , Just . (tableId,) <$> prepareCacheEntry (fromJust serializedValTable))
              , (False , return Nothing)
              ])
       ]

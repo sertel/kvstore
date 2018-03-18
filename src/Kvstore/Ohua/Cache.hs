@@ -29,3 +29,31 @@ deserializeTableSF d = do
   (r, kvsstate) <- liftIO $ runStateT (deserializeTable d) KVSState{ _deserializer=deser }
   put $ view deserializer kvsstate
   return r
+
+decryptTableSF :: BS.ByteString -> StateT Decryption IO BS.ByteString
+decryptTableSF d = do
+  decrypter <- get
+  (r, KVSState{ _decryption=decrypter' }) <- liftIO $ runStateT (decryptTable d) KVSState{ _decryption=decrypter }
+  put decrypter'
+  return r
+
+decompressTableSF :: BS.ByteString -> StateT Decompression IO BS.ByteString
+decompressTableSF d = do
+  decomp <- get
+  (r, KVSState{ _decompression=decomp' }) <- liftIO $ runStateT (decompressTable d) KVSState{ _decompression=decomp }
+  put decomp'
+  return r
+
+encryptTableSF :: BS.ByteString -> StateT Encryption IO BS.ByteString
+encryptTableSF d = do
+  encrypter <- get
+  (r, KVSState{ _encryption=encrypter' }) <- liftIO $ runStateT (encryptTable d) KVSState{ _encryption=encrypter }
+  put encrypter'
+  return r
+
+compressTableSF :: BS.ByteString -> StateT Compression IO BS.ByteString
+compressTableSF d = do
+  comp <- get
+  (r, KVSState{ _compression=comp' }) <- liftIO $ runStateT (compressTable d) KVSState{ _compression=comp }
+  put comp'
+  return r

@@ -29,6 +29,12 @@ import           Kvstore.Ohua.SBFM.KVSTypes
 import           Kvstore.Ohua.Cache
 
 -- algo
+prepareCacheEntry :: Var T.Text -> Var (Maybe BS.ByteString) -> ASTM [Dynamic] (Var (Maybe (T.Text, Table)))
+prepareCacheEntry tableId serializedValTable = do
+  decrypted <- liftWithIndex decryptTableStateIdx (decryptTableSF . fromJust) serializedValTable
+  decompressed <- liftWithIndex decompressTableStateIdx decompressTableSF decrypted
+  lift2WithIndex deserializeTableStateIdx (\tId d -> (fmap (Just . (tId,)) . deserializeTableSF) d) tableId decompressed
+
 loadCacheEntry :: (DB.DB_Iface db, Typeable db)
                => Var KVStore -> Var db -> Var T.Text -> ASTM [Dynamic] (Var (Maybe (T.Text, Table)))
 loadCacheEntry kvs db tableId = do
@@ -49,6 +55,5 @@ loadCacheEntry kvs db tableId = do
                                        (S.return . isJust :: Maybe BS.ByteString -> StateT Stateless IO Bool)
                                        serializedValTable
           if_ tableExists
-             (lift2WithIndex deserializeTableStateIdx
-                          (\tId svt -> (fmap (Just . (tId,)) . deserializeTableSF . fromJust) svt) tableId serializedValTable)
-             $ sfConst' Nothing)
+              (prepareCacheEntry tableId serializedValTable)
+              $ sfConst' Nothing)

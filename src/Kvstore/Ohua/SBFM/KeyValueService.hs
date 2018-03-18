@@ -66,7 +66,10 @@ execRequestsFunctional :: (DB.DB_Iface db, Typeable db)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
-  kvsstate@KVSState{_cache=cache_, _storage=db, _serializer=ser, _deserializer=deser} <- get
+  kvsstate@KVSState{ _cache=cache_, _storage=db
+                   , _serializer=ser, _deserializer=deser
+                   , _compression=comp, _decompression=decomp
+                   , _encryption=enc, _decryption=dec } <- get
   (responses, cache'', db'')
                 <- liftIO $ runOhuaM -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
                                      (do
@@ -74,7 +77,7 @@ execRequestsFunctional reqs = do
                                        d <- sfConst' db
                                        r <- sfConst' reqs
                                        execRequestsOhua c d r)
-                                     $ SFBMTypes.globalState ser deser
-  -- let (ser',deser') = convertState serde'
+                                     $ SFBMTypes.globalState ser deser comp decomp enc dec
+  -- let (ser',deser') = convertState serde' -- TODO
   put kvsstate{_storage=db'', _cache=cache''}
   return responses

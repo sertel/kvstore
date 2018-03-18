@@ -10,49 +10,49 @@ import           Data.Dynamic2
 
 -- Cache
 loadCacheEntryTableLookUpState = ()
-loadCacheEntryTableLookUpStateIdx = 15 :: Int
+loadCacheEntryTableLookUpStateIdx = KVST.compressTableStateIdx + 1
 loadCacheEntryTableCachedState = ()
-loadCacheEntryTableCachedStateIdx = 16 :: Int
+loadCacheEntryTableCachedStateIdx = KVST.compressTableStateIdx + 2
 loadCacheEntryTableWasCachedState = ()
-loadCacheEntryTableWasCachedStateIdx = 17 :: Int
+loadCacheEntryTableWasCachedStateIdx = KVST.compressTableStateIdx + 3
 loadCacheEntryTableExistsState = ()
-loadCacheEntryTableExistsStateIdx = 18 :: Int
+loadCacheEntryTableExistsStateIdx = KVST.compressTableStateIdx + 4
 
 -- RequestHandling
 serveDestOpState = ()
-serveDestOpStateIdx = 19 :: Int
+serveDestOpStateIdx = KVST.compressTableStateIdx + 5
 serveDestTableState = ()
-serveDestTableStateIdx = 20 :: Int
+serveDestTableStateIdx = KVST.compressTableStateIdx + 6
 serveDestKeyState = ()
-serveDestKeyStateIdx = 21 :: Int
+serveDestKeyStateIdx = KVST.compressTableStateIdx + 7
 serveDestFieldsState = ()
-serveDestFieldsStateIdx = 22 :: Int
+serveDestFieldsStateIdx = KVST.compressTableStateIdx + 8
 serveDestRecordCountState = ()
-serveDestRecordCountStateIdx = 23 :: Int
+serveDestRecordCountStateIdx = KVST.compressTableStateIdx + 9
 serveDestValuesState = ()
-serveDestValuesStateIdx = 24 :: Int
+serveDestValuesStateIdx = KVST.compressTableStateIdx + 10
 serveIsReadState = ()
-serveIsReadStateIdx = 25 :: Int
+serveIsReadStateIdx = KVST.compressTableStateIdx + 11
 serveIsScanState = ()
-serveIsScanStateIdx = 26 :: Int
+serveIsScanStateIdx = KVST.compressTableStateIdx + 12
 serveIsUpdateState = ()
-serveIsUpdateStateIdx = 27 :: Int
+serveIsUpdateStateIdx = KVST.compressTableStateIdx + 13
 serveIsInsertState = ()
-serveIsInsertStateIdx = 28 :: Int
+serveIsInsertStateIdx = KVST.compressTableStateIdx + 14
 deleteTableLookupState = ()
-deleteTableLookupStateIdx = 29 :: Int
+deleteTableLookupStateIdx = KVST.compressTableStateIdx + 15
 deleteTableLoadedState = ()
-deleteTableLoadedStateIdx = 30 :: Int
+deleteTableLoadedStateIdx = KVST.compressTableStateIdx + 16
 deleteComposeResultState = ()
-deleteComposeResultStateIdx = 31 :: Int
+deleteComposeResultStateIdx = KVST.compressTableStateIdx + 17
 
 -- KeyValueService
 reqGeneratorState = ()
-reqGeneratorStateIdx = 32 :: Int
+reqGeneratorStateIdx = KVST.compressTableStateIdx + 18
 reqsToListState = ()
-reqsToListStateIdx = 33 :: Int
+reqsToListStateIdx = KVST.compressTableStateIdx + 19
 finalResultState = ()
-finalResultStateIdx = 34 :: Int
+finalResultStateIdx = KVST.compressTableStateIdx + 20
 
 
 additionalGlobalState = [
@@ -84,5 +84,9 @@ additionalGlobalState = [
 
                         ]
 
-globalState :: Serialization -> Deserialization -> [Dynamic]
-globalState ser deser = map (\(SE.S _ d) -> d) (KVST.globalState ser deser) ++ additionalGlobalState
+globalState :: Serialization -> Deserialization ->
+               Compression -> Decompression ->
+               Encryption -> Decryption ->
+               [Dynamic]
+globalState ser deser comp decomp enc dec =
+  map (\(SE.S _ d) -> d) (KVST.globalState ser deser comp decomp enc dec) ++ additionalGlobalState

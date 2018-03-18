@@ -24,6 +24,18 @@ instance NFData Serialization where
 instance NFData Deserialization where
   rnf (Deserialization _ st) = rnf st
 
+instance NFData Encryption where
+  rnf (Encryption _ st) = rnf st
+
+instance NFData Decryption where
+  rnf (Decryption _ st) = rnf st
+
+instance NFData Compression where
+  rnf (Compression _ st) = rnf st
+
+instance NFData Decompression where
+  rnf (Decompression _ st) = rnf st
+
 --
 -- Global State definition
 --
@@ -65,8 +77,25 @@ loadTableStateIdx = 13 :: Int
 foldINSERTsIntoCacheState = ()
 foldINSERTsIntoCacheStateIdx = 14 :: Int
 
-globalState :: Serialization -> Deserialization -> [SE.S]
-globalState ser deser = [ toS foldIntoCacheState
+decryptTableState :: Decryption -> Decryption
+decryptTableState = id
+decryptTableStateIdx = 15 :: Int
+encryptTableState :: Encryption -> Encryption
+encryptTableState = id
+encryptTableStateIdx = 16 :: Int
+decompressTableState :: Decompression -> Decompression
+decompressTableState = id
+decompressTableStateIdx = 17 :: Int
+compressTableState :: Compression -> Compression
+compressTableState = id
+compressTableStateIdx = 18 :: Int
+
+globalState :: Serialization -> Deserialization ->
+               Compression -> Decompression ->
+               Encryption -> Decryption ->
+               [SE.S]
+globalState ser deser comp decomp enc dec =
+                    [ toS foldIntoCacheState
                     , toS foldEvictFromCacheState
                     , toS $ deserializeTableState deser
                     , toS rEADReqHandlingState
@@ -81,10 +110,20 @@ globalState ser deser = [ toS foldIntoCacheState
                     , toS updateStoreTableState
                     , toS loadTableState
                     , toS foldINSERTsIntoCacheState
+                    , toS $ decryptTableState dec
+                    , toS $ encryptTableState enc
+                    , toS $ decompressTableState decomp
+                    , toS $ compressTableState comp
                     ]
 
-convertState :: [SE.S] -> (Serialization , Deserialization)
-convertState s = (fromS $ s !! updateSerializeTableStateIdx, fromS $ s !! deserializeTableStateIdx)
+convertState :: [SE.S] -> (Serialization, Deserialization, Compression, Decompression, Encryption, Decryption)
+convertState s = ( fromS $ s !! updateSerializeTableStateIdx
+                 , fromS $ s !! deserializeTableStateIdx
+                 , fromS $ s !! compressTableStateIdx
+                 , fromS $ s !! decompressTableStateIdx
+                 , fromS $ s !! encryptTableStateIdx
+                 , fromS $ s !! decryptTableStateIdx
+                 )
 -- FIXME this is only true when the SerDe is stateless.
 -- otherwise the API here can not cope with having many states, one for each of the SerDes.
 -- we will need to change the Kvstore.Ohua.FBM.KeyValueService.execRequestsFunctional
