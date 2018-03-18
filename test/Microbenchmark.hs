@@ -45,7 +45,7 @@ initState = do
   db <- newIORef HM.empty
   (aesEnc,aesDec) <- aesEncryption
   return $ KVSState HM.empty
-                    (db :: MockDB)
+                    (MockDB db 20000)
                     jsonSer
                     jsonDeSer
                     zlibComp
@@ -146,7 +146,7 @@ workload :: forall g. RandomGen g => Int -> StateT (BenchmarkState g) IO (V.Vect
 workload operationCount = V.fromList <$> mapM (const createRequest) [1..operationCount]
 
 showState :: KVSState MockDB -> IO String
-showState KVSState{_cache=cache, _storage=dbRef} = do
+showState KVSState{_cache=cache, _storage=MockDB dbRef _} = do
   db <- readIORef dbRef
   return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 

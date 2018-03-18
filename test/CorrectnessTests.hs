@@ -28,7 +28,7 @@ initState :: IO (KVSState MockDB)
 initState = do
   db <- newIORef HM.empty
   return $ KVSState HM.empty
-                    (db :: MockDB)
+                    (MockDB db 0)
                     jsonSer
                     jsonDeSer
                     noComp
@@ -42,7 +42,7 @@ singleInsert = do
   (responses, s') <- flip runStateT s $ insertEntry "table-0" "key-0" "field-0" "value-0"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs state)
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef ._storage) s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse INSERT (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
@@ -57,7 +57,7 @@ singleDelete = do
                                 deleteEntry "table-0" "key-0"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse DELETE (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0") (T.pack "{}")) db'
@@ -71,7 +71,7 @@ singleUpdate = do
                                 updateEntry "table-0" "key-0" "field-0" "value-1"
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse UPDATE (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
@@ -86,7 +86,7 @@ singleRead = do
                                 readEntry "table-0" "key-0" "field-0"
   -- traceM $ "responses: " ++ show responses
   -- traceM $ "kvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "db: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse READ (Just $ HM.singleton (T.pack "field-0") (T.pack "value-0")) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
@@ -104,7 +104,7 @@ singleScan = do
                                 scanEntry "table-0" "key-1" "field-0"
   -- traceM $ "responses: " ++ show responses
   -- traceM $ "kvs: " ++ (show $ getKvs s')
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "db: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse
                                                   SCAN
@@ -135,7 +135,7 @@ multipleInserts = do
                                                                 ,("key-1","field-1","value-1")]
   -- traceM $ "\nresponses: " ++ show responses
   -- traceM $ "\nkvs: " ++ (show $ getKvs state)
-  db' <- readIORef $ _storage s'
+  db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.fromList  [ KVResponse INSERT (Just HM.empty) Nothing Nothing
                                              , KVResponse INSERT (Just HM.empty) Nothing Nothing]) responses
