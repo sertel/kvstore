@@ -104,6 +104,7 @@ test-suite kvstore-test
                      , Requests
                      , CorrectnessTests
                      , Versions
+                     , Crypto
   build-depends:       base
                      , kvstore
                      , mtl
@@ -121,7 +122,9 @@ test-suite kvstore-test
                      , aeson
                      , bytestring
                      , zlib
+                     , cryptonite
                      , deepseq
+                     , memory
   -- ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-ds -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   default-language:    Haskell2010

@@ -99,11 +99,11 @@ decompressTable table = do
                               in (t,kvsstate{_decompression=Decompression decomp s})
 
 store :: DB.DB_Iface a => T.Text -> Table -> StateT (KVSState a) IO ()
-store tableId table = storeTable tableId =<< compressTable =<< serializeTable table
+store tableId table = storeTable tableId =<< encryptTable =<< compressTable =<< serializeTable table
 
 load :: DB.DB_Iface a => T.Text -> StateT (KVSState a) IO (Maybe (T.Text, Table))
 load tableId = do
   serializedValTable <- loadTable tableId
   case serializedValTable of
     Nothing -> return Nothing
-    (Just v) -> Just . (tableId,) <$> (deserializeTable =<< decompressTable v)
+    (Just v) -> Just . (tableId,) <$> (deserializeTable =<< decryptTable =<< decompressTable v)

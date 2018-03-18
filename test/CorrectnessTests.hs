@@ -33,8 +33,8 @@ initState = do
                     jsonDeSer
                     noComp
                     noDecomp
-                    undefined
-                    undefined
+                    noEnc
+                    noDec
 
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do

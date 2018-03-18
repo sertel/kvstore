@@ -9,6 +9,7 @@ module ServiceConfig where
 
 import qualified Data.Text.Lazy            as T
 import qualified Data.HashMap.Strict       as HM
+import qualified Data.ByteString.Lazy      as BS
 import           Data.IORef
 
 import qualified DB_Iface                  as DB
@@ -20,6 +21,9 @@ import           Kvstore.KVSTypes
 import           Codec.Compression.Zlib
 import           Control.DeepSeq
 import           GHC.Generics
+
+import           Crypto
+
 
 type MockDB = IORef (HM.HashMap T.Text T.Text)
 
@@ -61,3 +65,24 @@ noComp = Compression (\s t -> (t, s)) ()
 
 noDecomp :: Decompression
 noDecomp = Decompression (\s t -> (t, s)) ()
+
+aesEncryption :: IO (Encryption, Decryption)
+aesEncryption = do
+  aesState <- initAESState
+  let e = flip Encryption aesState
+                          $ \s@(AESState sk iv) t ->
+                              case encrypt sk iv (BS.toStrict t) of
+                                    Left err -> error $ show err
+                                    Right eMsg -> (BS.fromStrict eMsg,s)
+      d = flip Decryption aesState
+                          $ \s@(AESState sk iv) t ->
+                                  case decrypt sk iv (BS.toStrict t) of
+                                        Left err -> error $ show err
+                                        Right eMsg -> (BS.fromStrict eMsg,s)
+  return (e,d)
+
+noEnc :: Encryption
+noEnc = Encryption (\s t -> (t, s)) ()
+
+noDec :: Decryption
+noDec = Decryption (\s t -> (t, s)) ()

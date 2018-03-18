@@ -43,14 +43,15 @@ import           Debug.Trace
 initState :: IO (KVSState MockDB)
 initState = do
   db <- newIORef HM.empty
+  (aesEnc,aesDec) <- aesEncryption
   return $ KVSState HM.empty
                     (db :: MockDB)
                     jsonSer
                     jsonDeSer
                     zlibComp
                     zlibDecomp
-                    undefined
-                    undefined
+                    aesEnc
+                    aesDec
 
 valueTemplate v = "value-" ++ show v
 fieldTemplate f = "field-" ++ show f
