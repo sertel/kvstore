@@ -33,6 +33,16 @@ import           Kvstore.Ohua.RequestHandling
 -- algos
 --
 
+prepareTable :: Int -> Int -> Int -> Var Table -> ASTM [Dynamic] (Var BS.ByteString)
+prepareTable serializeTableStateIdx
+      compressTableStateIdx
+      encryptTableStateIdx
+      table = do
+        serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
+        compressedTable <- liftWithIndex compressTableStateIdx compressTable serializedTable
+        liftWithIndex encryptTableStateIdx encryptTable compressedTable
+        -- _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
+
 update :: (DB.DB_Iface db, Typeable db)
        => Var KVStore -> Var db -> Var T.Text -> Var T.Text -> Var (Maybe (HM.HashMap T.Text T.Text))
        -> ASTM [Dynamic] (Var KVResponse)
@@ -40,11 +50,10 @@ update cache db tableId key values = do
   table' <- lift4WithIndex calcUpdateStateIdx
                            (\ c t k v -> calculateUpdate c t k $ fromMaybe HM.empty v)
                            cache tableId key values
-  serializedTable <- liftWithIndex updateSerializeTableStateIdx
-                                   serializeTable table'
+  preparedTable <- prepareTable updateSerializeTableStateIdx updateCompressTableStateIdx updateEncryptTableStateIdx table'
   lift3WithIndex updateStoreTableStateIdx
                  (\d t s -> const (KVResponse UPDATE (Just HM.empty) Nothing Nothing) <$> storeTable d t s)
-                 db tableId serializedTable
+                 db tableId preparedTable
 
 insert :: (DB.DB_Iface db, Typeable db)
        => Var KVStore -> Var db -> Var T.Text -> Var T.Text -> Var (Maybe (HM.HashMap T.Text T.Text))
@@ -53,10 +62,10 @@ insert cache db tableId key values = do
   table' <- lift4WithIndex calcInsertStateIdx
                            (\ c t k v -> calculateInsert c t k $ fromMaybe HM.empty v)
                            cache tableId key values
-  serializedTable <- liftWithIndex insertSerializeTableStateIdx serializeTable table'
+  preparedTable <- prepareTable insertSerializeTableStateIdx insertCompressTableStateIdx insertEncryptTableStateIdx table'
   lift3WithIndex insertStoreTableStateIdx
                  (\d t s -> const (KVResponse INSERT (Just HM.empty) Nothing Nothing) <$> storeTable d t s)
-                 db tableId serializedTable
+                 db tableId preparedTable
 
 delete :: (DB.DB_Iface db, Typeable db)
        => Var KVStore -> Var db -> Var T.Text -> Var T.Text
@@ -73,7 +82,9 @@ delete cache db tableId key = do
                 serializedTable <- lift2WithIndex deleteSerializeTableStateIdx
                                                   (\k t -> (serializeTable . HM.delete k . fromJust) t)
                                                   key table
-                lift3WithIndex deleteStoreTableStateIdx storeTable db tableId serializedTable)
+                compressedTable <- liftWithIndex deleteCompressTableStateIdx compressTable serializedTable
+                encryptedTable <- liftWithIndex deleteEncryptTableStateIdx encryptTable compressedTable
+                lift3WithIndex deleteStoreTableStateIdx storeTable db tableId encryptedTable)
               (sfConst' ())
   liftWithIndex deleteComposeResultStateIdx
                 (const (return $ KVResponse DELETE (Just HM.empty) Nothing Nothing) :: () -> StateT Stateless IO KVResponse)

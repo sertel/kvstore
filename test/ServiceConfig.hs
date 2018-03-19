@@ -90,7 +90,7 @@ aesEncryption = do
   return (e,d)
 
 noEnc :: Encryption
-noEnc = Encryption (\s t -> (t, s)) ()
+noEnc = Encryption (\s t -> (t,s)) ()
 
 noDec :: Decryption
-noDec = Decryption (\s t -> (t, s)) ()
+noDec = Decryption (\s t -> (t,s)) ()

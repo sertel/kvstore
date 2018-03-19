@@ -23,7 +23,9 @@ import           Control.DeepSeq
 import           Kvstore.Ohua.KVSTypes
 import           Kvstore.Ohua.Cache
 
--- algo
+-- algos
+
+-- What if I use this algo on twice?! -> shared state deadlock
 prepareCacheEntry :: BS.ByteString -> OhuaM Table
 prepareCacheEntry serializedValTable = do
   decrypted <- liftWithIndex decryptTableStateIdx decryptTableSF serializedValTable

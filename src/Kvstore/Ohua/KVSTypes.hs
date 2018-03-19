@@ -80,16 +80,31 @@ foldINSERTsIntoCacheStateIdx = 14 :: Int
 decryptTableState :: Decryption -> Decryption
 decryptTableState = id
 decryptTableStateIdx = 15 :: Int
-encryptTableState :: Encryption -> Encryption
-encryptTableState = id
-encryptTableStateIdx = 16 :: Int
 decompressTableState :: Decompression -> Decompression
 decompressTableState = id
-decompressTableStateIdx = 17 :: Int
-compressTableState :: Compression -> Compression
-compressTableState = id
-compressTableStateIdx = 18 :: Int
+decompressTableStateIdx = 16 :: Int
+insertCompressTableState :: Compression -> Compression
+insertCompressTableState = id
+insertCompressTableStateIdx = 17 :: Int
+insertEncryptTableState :: Encryption -> Encryption
+insertEncryptTableState = id
+insertEncryptTableStateIdx = 18 :: Int
+updateCompressTableState :: Compression -> Compression
+updateCompressTableState = id
+updateCompressTableStateIdx = 19 :: Int
+updateEncryptTableState :: Encryption -> Encryption
+updateEncryptTableState = id
+updateEncryptTableStateIdx = 20 :: Int
+deleteCompressTableState :: Compression -> Compression
+deleteCompressTableState = id
+deleteCompressTableStateIdx = 21 :: Int
+deleteEncryptTableState :: Encryption -> Encryption
+deleteEncryptTableState = id
+deleteEncryptTableStateIdx = 22 :: Int
 
+lastStateIdx = deleteEncryptTableStateIdx
+
+-- FIXME state sharing not ok at this level
 globalState :: Serialization -> Deserialization ->
                Compression -> Decompression ->
                Encryption -> Decryption ->
@@ -111,17 +126,21 @@ globalState ser deser comp decomp enc dec =
                     , toS loadTableState
                     , toS foldINSERTsIntoCacheState
                     , toS $ decryptTableState dec
-                    , toS $ encryptTableState enc
                     , toS $ decompressTableState decomp
-                    , toS $ compressTableState comp
+                    , toS $ insertCompressTableState comp
+                    , toS $ insertEncryptTableState enc
+                    , toS $ updateCompressTableState comp
+                    , toS $ updateEncryptTableState enc
+                    , toS $ deleteCompressTableState comp
+                    , toS $ deleteEncryptTableState enc
                     ]
 
 convertState :: [SE.S] -> (Serialization, Deserialization, Compression, Decompression, Encryption, Decryption)
 convertState s = ( fromS $ s !! updateSerializeTableStateIdx
                  , fromS $ s !! deserializeTableStateIdx
-                 , fromS $ s !! compressTableStateIdx
+                 , fromS $ s !! insertCompressTableStateIdx
                  , fromS $ s !! decompressTableStateIdx
-                 , fromS $ s !! encryptTableStateIdx
+                 , fromS $ s !! insertEncryptTableStateIdx
                  , fromS $ s !! decryptTableStateIdx
                  )
 -- FIXME this is only true when the SerDe is stateless.

@@ -8,7 +8,8 @@ import           Requests
 
 versions :: [(ExecReqFn, String)]
 versions =
-  [ (KVS.execRequestsCoarse,             "coarse-grained imperative")
+  [
+    (KVS.execRequestsCoarse,             "coarse-grained imperative")
   , (KVS.execRequestsFine,               "fine-grained imperative")
   , (KVS.execRequestsFuncImp,            "functional-imperative")
   , (KVS.execRequestsFunctional,         "purely functional")

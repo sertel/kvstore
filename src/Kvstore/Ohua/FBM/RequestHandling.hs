@@ -32,14 +32,26 @@ import           Kvstore.Ohua.RequestHandling
 -- algos
 --
 
+store :: (DB.DB_Iface db)
+      => Int -> Int -> Int -> Int -> db -> T.Text -> Table -> OhuaM ()
+store serializeTableStateIdx
+      compressTableStateIdx
+      encryptTableStateIdx
+      storeTableStateIdx
+      db tableId table = do
+        serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
+        compressedTable <- liftWithIndex compressTableStateIdx compressTable serializedTable
+        encryptedTable <- liftWithIndex encryptTableStateIdx encryptTable compressedTable
+        _ <- liftWithIndex storeTableStateIdx (storeTable db tableId) serializedTable
+        return ()
+
 update :: (DB.DB_Iface db)
        => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
        -> OhuaM KVResponse
 update cache db tableId key Nothing = update cache db tableId key $ Just HM.empty
 update cache db tableId key (Just values) = do
   table' <- liftWithIndex calcUpdateStateIdx (calculateUpdate cache tableId key) values
-  serializedTable <- liftWithIndex updateSerializeTableStateIdx serializeTable table'
-  _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
+  store updateSerializeTableStateIdx updateCompressTableStateIdx updateEncryptTableStateIdx updateStoreTableStateIdx db tableId table'
   return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
 
 insert :: (DB.DB_Iface db)
@@ -48,8 +60,7 @@ insert :: (DB.DB_Iface db)
 insert cache db tableId key Nothing = insert cache db tableId key $ Just HM.empty
 insert cache db tableId key (Just values) = do
   table' <- liftWithIndex calcInsertStateIdx (calculateInsert cache tableId key) values
-  serializedTable <- liftWithIndex insertSerializeTableStateIdx serializeTable table'
-  _ <- liftWithIndex insertStoreTableStateIdx (storeTable db tableId) serializedTable
+  store insertSerializeTableStateIdx insertCompressTableStateIdx insertEncryptTableStateIdx insertStoreTableStateIdx db tableId table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
 delete :: (DB.DB_Iface db)
@@ -59,9 +70,7 @@ delete cache db tableId key = do
   let table = HM.lookup tableId cache
   case_ (isJust table)
         [
-          (True, do
-              serializedTable <- liftWithIndex deleteSerializeTableStateIdx serializeTable $ HM.delete key $ fromJust table
-              liftWithIndex deleteStoreTableStateIdx (storeTable db tableId) serializedTable)
+          (True,  store deleteSerializeTableStateIdx deleteCompressTableStateIdx deleteEncryptTableStateIdx deleteStoreTableStateIdx db tableId $ HM.delete key $ fromJust table)
         , (False, return ())
         ]
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
