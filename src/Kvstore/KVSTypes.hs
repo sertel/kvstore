@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Kvstore.KVSTypes where
 
@@ -77,13 +78,5 @@ data KVSState a = KVSState
                 }
 
 makeLenses ''KVSState
-
-emptyKVSState = KVSState undefined
-                         undefined
-                         undefined
-                         undefined
-                         undefined
-                         undefined
-                         undefined
 
 newtype KVSHandler a = KVSHandler (IORef (KVSState a))

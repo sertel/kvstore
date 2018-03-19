@@ -66,12 +66,14 @@ insertSerializeTableStateIdx = 8 :: Int
 deleteSerializeTableState :: Serialization -> Serialization
 deleteSerializeTableState = id
 deleteSerializeTableStateIdx = 9 :: Int
+
 insertStoreTableState = ()
 insertStoreTableStateIdx = 10 :: Int
 deleteStoreTableState = ()
 deleteStoreTableStateIdx = 11 :: Int
 updateStoreTableState = ()
 updateStoreTableStateIdx = 12 :: Int
+
 loadTableState = ()
 loadTableStateIdx = 13 :: Int
 foldINSERTsIntoCacheState = ()
@@ -83,18 +85,21 @@ decryptTableStateIdx = 15 :: Int
 decompressTableState :: Decompression -> Decompression
 decompressTableState = id
 decompressTableStateIdx = 16 :: Int
+
 insertCompressTableState :: Compression -> Compression
 insertCompressTableState = id
 insertCompressTableStateIdx = 17 :: Int
 insertEncryptTableState :: Encryption -> Encryption
 insertEncryptTableState = id
 insertEncryptTableStateIdx = 18 :: Int
+
 updateCompressTableState :: Compression -> Compression
 updateCompressTableState = id
 updateCompressTableStateIdx = 19 :: Int
 updateEncryptTableState :: Encryption -> Encryption
 updateEncryptTableState = id
 updateEncryptTableStateIdx = 20 :: Int
+
 deleteCompressTableState :: Compression -> Compression
 deleteCompressTableState = id
 deleteCompressTableStateIdx = 21 :: Int
@@ -110,7 +115,8 @@ globalState :: Serialization -> Deserialization ->
                Encryption -> Decryption ->
                [SE.S]
 globalState ser deser comp decomp enc dec =
-                    [ toS foldIntoCacheState
+                    [
+                      toS foldIntoCacheState
                     , toS foldEvictFromCacheState
                     , toS $ deserializeTableState deser
                     , toS rEADReqHandlingState
@@ -125,8 +131,10 @@ globalState ser deser comp decomp enc dec =
                     , toS updateStoreTableState
                     , toS loadTableState
                     , toS foldINSERTsIntoCacheState
+
                     , toS $ decryptTableState dec
                     , toS $ decompressTableState decomp
+
                     , toS $ insertCompressTableState comp
                     , toS $ insertEncryptTableState enc
                     , toS $ updateCompressTableState comp
