@@ -38,7 +38,7 @@ import qualified Thrift.Types as T
 import qualified Thrift.Arbitraries as T
 
 
-data DBResponse = DBResponse  { dBResponse_value :: P.Maybe LT.Text
+data DBResponse = DBResponse  { dBResponse_value :: P.Maybe LBS.ByteString
   } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
 instance H.Hashable DBResponse where
   hashWithSalt salt record = salt   `H.hashWithSalt` dBResponse_value record  
@@ -50,7 +50,7 @@ instance QC.Arbitrary DBResponse where
     ]
 from_DBResponse :: DBResponse -> T.ThriftVal
 from_DBResponse record = T.TStruct $ Map.fromList $ M.catMaybes
-  [ (\_v2 -> (1, ("value",T.TString $ E.encodeUtf8 _v2))) <$> dBResponse_value record
+  [ (\_v2 -> (1, ("value",T.TString _v2))) <$> dBResponse_value record
   ]
 write_DBResponse :: (T.Protocol p, T.Transport t) => p t -> DBResponse -> P.IO ()
 write_DBResponse oprot record = T.writeVal oprot $ from_DBResponse record
@@ -58,7 +58,7 @@ encode_DBResponse :: (T.Protocol p, T.Transport t) => p t -> DBResponse -> LBS.B
 encode_DBResponse oprot record = T.serializeVal oprot $ from_DBResponse record
 to_DBResponse :: T.ThriftVal -> DBResponse
 to_DBResponse (T.TStruct fields) = DBResponse{
-  dBResponse_value = P.maybe (P.Nothing) (\(_,_val4) -> P.Just (case _val4 of {T.TString _val5 -> E.decodeUtf8 _val5; _ -> P.error "wrong type"})) (Map.lookup (1) fields)
+  dBResponse_value = P.maybe (P.Nothing) (\(_,_val4) -> P.Just (case _val4 of {T.TString _val5 -> _val5; _ -> P.error "wrong type"})) (Map.lookup (1) fields)
   }
 to_DBResponse _ = P.error "not a struct"
 read_DBResponse :: (T.Transport t, T.Protocol p) => p t -> P.IO DBResponse

@@ -107,7 +107,7 @@ default_Get_result :: Get_result
 default_Get_result = Get_result{
   get_result_success = default_DBResponse}
 data Put_args = Put_args  { put_args_key :: LT.Text
-  , put_args_value :: LT.Text
+  , put_args_value :: LBS.ByteString
   } deriving (P.Show,P.Eq,G.Generic,TY.Typeable)
 instance H.Hashable Put_args where
   hashWithSalt salt record = salt   `H.hashWithSalt` put_args_key record   `H.hashWithSalt` put_args_value record  
@@ -122,7 +122,7 @@ instance QC.Arbitrary Put_args where
 from_Put_args :: Put_args -> T.ThriftVal
 from_Put_args record = T.TStruct $ Map.fromList $ M.catMaybes
   [ (\_v20 -> P.Just (1, ("key",T.TString $ E.encodeUtf8 _v20))) $ put_args_key record
-  , (\_v20 -> P.Just (2, ("value",T.TString $ E.encodeUtf8 _v20))) $ put_args_value record
+  , (\_v20 -> P.Just (2, ("value",T.TString _v20))) $ put_args_value record
   ]
 write_Put_args :: (T.Protocol p, T.Transport t) => p t -> Put_args -> P.IO ()
 write_Put_args oprot record = T.writeVal oprot $ from_Put_args record
@@ -131,7 +131,7 @@ encode_Put_args oprot record = T.serializeVal oprot $ from_Put_args record
 to_Put_args :: T.ThriftVal -> Put_args
 to_Put_args (T.TStruct fields) = Put_args{
   put_args_key = P.maybe (put_args_key default_Put_args) (\(_,_val22) -> (case _val22 of {T.TString _val23 -> E.decodeUtf8 _val23; _ -> P.error "wrong type"})) (Map.lookup (1) fields),
-  put_args_value = P.maybe (put_args_value default_Put_args) (\(_,_val22) -> (case _val22 of {T.TString _val24 -> E.decodeUtf8 _val24; _ -> P.error "wrong type"})) (Map.lookup (2) fields)
+  put_args_value = P.maybe (put_args_value default_Put_args) (\(_,_val22) -> (case _val22 of {T.TString _val24 -> _val24; _ -> P.error "wrong type"})) (Map.lookup (2) fields)
   }
 to_Put_args _ = P.error "not a struct"
 read_Put_args :: (T.Transport t, T.Protocol p) => p t -> P.IO Put_args

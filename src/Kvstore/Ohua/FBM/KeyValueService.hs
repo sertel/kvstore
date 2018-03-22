@@ -37,14 +37,17 @@ execRequestsOhua cache db reqs = do
   --       this fold can later on be optimized in the streams version
   --       because only the final step of loading the data is essentially
   --       to be folded over!
+  traceM $ "start!" ++ show (Vector.length reqs)
   newEntries <- smap (CF.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
-
+  traceM $ "done loading cache entries: " ++ show (length newEntries)
   cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
 
   cache'' <- liftWithIndex foldINSERTsIntoCacheStateIdx (foldINSERTsIntoCache cache') $ Vector.toList $ Cache.findInserts reqs
-
+  traceM "request handling"
   responses <- smap (RH.serve cache'' db) $ Vector.toList reqs
+  traceM "request handling done."
   cache''' <- liftWithIndex foldEvictFromCacheStateIdx (foldEvictFromCache cache'') reqs
+  traceM "done with whole algo"
   return (Vector.fromList responses, cache''', db)
 
 
@@ -52,6 +55,7 @@ execRequestsFunctional :: (DB.DB_Iface db, NFData db)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
+  traceM $ "Start now: " ++ show (Vector.length reqs)
   kvsstate@KVSState{ _cache=cache_, _storage=db
                    , _serializer=ser, _deserializer=deser
                    , _compression=comp, _decompression=decomp
@@ -63,4 +67,6 @@ execRequestsFunctional reqs = do
               , _serializer=ser', _deserializer=deser'
               , _compression=comp', _decompression=decomp'
               , _encryption=enc', _decryption=dec' }
+  -- traceM $ "totally done! : "
+  traceM "totally done!"
   return responses

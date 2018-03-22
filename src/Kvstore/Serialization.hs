@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, InstanceSigs #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, InstanceSigs, LambdaCase #-}
 
 module Kvstore.Serialization where
 
@@ -8,6 +8,8 @@ import           Data.ByteString.Lazy
 import           Data.Maybe
 import           GHC.Generics
 import           Control.DeepSeq
+
+import           Debug.Trace
 
 serialize :: Serialization -> Table -> (Serialization, ByteString)
 serialize (Serialization ser s) tbl = let (bs, s') = ser s tbl in (Serialization ser s', bs)
@@ -23,6 +25,8 @@ jsonSer = Serialization
 
 jsonDeSer :: Deserialization
 jsonDeSer = Deserialization
-  { _deserialize = \() bs -> ((fromJust . AE.decode) bs, ())
+  { _deserialize = \() bs -> (((\case
+                                  Just v -> v
+                                  Nothing -> error $ "impossible!" ++ show bs) . AE.decode) bs, ())
   , _deSerState = ()
   }

@@ -45,13 +45,15 @@ initState = do
   db <- newIORef HM.empty
   (aesEnc,aesDec) <- aesEncryption
   return $ KVSState HM.empty
-                    (MockDB db 20000)
+                    (MockDB db 0) -- latency is 0 for loading the DB and then we set it for the requests
                     jsonSer
                     jsonDeSer
                     zlibComp
                     zlibDecomp
-                    aesEnc
-                    aesDec
+                    -- aesEnc
+                    -- aesDec
+                    noEnc
+                    noDec
 
 valueTemplate v = "value-" ++ show v
 fieldTemplate f = "field-" ++ show f
@@ -165,9 +167,11 @@ loadDB keyCount = do
                                             (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
-  (responses, s') <- flip runStateT s $ ?execRequests requests
+  (responses, s'@KVSState{ _storage=(MockDB db _) }) <- flip runStateT s $ ?execRequests requests
   responses `seq` assertEqual "wrong number of responses" keyCount $ length responses
-  return s'
+
+  -- adjust minLatency for benchmark requests
+  return s'{ _storage=MockDB db 20000 }
 
   -- traceM "state after init:"
   -- traceM =<< showState s'
@@ -191,7 +195,7 @@ currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 --             => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
 runRequests operationCount keyCount bmState s = do
   (requests,_) <- runStateT (workload operationCount) bmState
-  -- traceM $ "requests:"
+  traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
   start <- currentTimeMillis
   (responses, s') <- requests `seq` flip runStateT s $ ?execRequests requests
@@ -231,7 +235,8 @@ data ScalabilityResult = ScalabilityResult { version :: String
 scalability name numThreads = do
     results <- foldM (\res n -> do
                       _ <- setNumCapabilities n
-                      r <- runMultipleBatches 2000 20 20
+                      -- r <- runMultipleBatches 2000 20 20
+                      r <- runMultipleBatches 20 20 1
                       return $ res ++ [r])
                     []
                     $ take numThreads [1,2..]

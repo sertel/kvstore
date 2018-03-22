@@ -6,6 +6,8 @@ import Test.HUnit hiding (State)
 import Test.Framework
 import Test.Framework.Providers.HUnit
 
+import qualified Data.ByteString.Lazy.Char8  as B8
+import qualified Data.ByteString.Lazy      as BS
 import qualified Data.Text.Lazy            as T
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.HashSet              as Set
@@ -36,6 +38,9 @@ initState = do
                     noEnc
                     noDec
 
+unpackDB :: HM.HashMap T.Text BS.ByteString -> HM.HashMap T.Text T.Text
+unpackDB = HM.fromList . map (\(k,v) -> (k, T.pack $ B8.unpack v)) . HM.toList
+
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do
   s <- initState
@@ -46,7 +51,7 @@ singleInsert = do
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse INSERT (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
-                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) db'
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) $ unpackDB db'
   assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleDelete :: (?execRequests :: ExecReqFn) => Assertion
@@ -60,7 +65,7 @@ singleDelete = do
   db' <- (readIORef . _dbRef. _storage) s'
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse DELETE (Just HM.empty) Nothing Nothing) responses
-  assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0") (T.pack "{}")) db'
+  assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0") (T.pack "{}")) $ unpackDB db'
   assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleUpdate :: (?execRequests :: ExecReqFn) => Assertion
@@ -75,7 +80,7 @@ singleUpdate = do
   -- traceM $ "\ndb: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse UPDATE (Just HM.empty) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
-                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-1\"}}")) db'
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-1\"}}")) $ unpackDB db'
   assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 singleRead :: (?execRequests :: ExecReqFn) => Assertion
@@ -90,7 +95,7 @@ singleRead = do
   -- traceM $ "db: " ++ show db'
   assertEqual "wrong response." (V.singleton $ KVResponse READ (Just $ HM.singleton (T.pack "field-0") (T.pack "value-0")) Nothing Nothing) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
-                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) db'
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"}}")) $ unpackDB db'
   assertEqual "cache has wrong data." (HM.singleton (T.pack "table-0")
                                       $ HM.singleton (T.pack "key-0")
                                       $ HM.singleton (T.pack "field-0") (T.pack "value-0"))
@@ -117,7 +122,8 @@ singleScan = do
 
                                 responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
-                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-0\":\"value-1\"},\"key-4\":{\"field-0\":\"value-4\"},\"key-5\":{\"field-0\":\"value-5\"},\"key-2\":{\"field-0\":\"value-2\"},\"key-3\":{\"field-0\":\"value-3\"}}")) db'
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-0\":\"value-1\"},\"key-4\":{\"field-0\":\"value-4\"},\"key-5\":{\"field-0\":\"value-5\"},\"key-2\":{\"field-0\":\"value-2\"},\"key-3\":{\"field-0\":\"value-3\"}}"))
+                                                 $ unpackDB db'
   assertEqual "cache has wrong data." (HM.singleton (T.pack "table-0")
                                         $ HM.fromList [ (T.pack "key-0", HM.singleton (T.pack "field-0") (T.pack "value-0"))
                                                       , (T.pack "key-1", HM.singleton (T.pack "field-0") (T.pack "value-1"))
@@ -140,7 +146,8 @@ multipleInserts = do
   assertEqual "wrong response." (V.fromList  [ KVResponse INSERT (Just HM.empty) Nothing Nothing
                                              , KVResponse INSERT (Just HM.empty) Nothing Nothing]) responses
   assertEqual "db does not contain proper data." (HM.singleton (T.pack "table-0")
-                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-1\":\"value-1\"}}")) db'
+                                                               (T.pack "{\"key-0\":{\"field-0\":\"value-0\"},\"key-1\":{\"field-1\":\"value-1\"}}"))
+                                                 $ unpackDB db'
   assertEqual "cache has wrong data." HM.empty $ _cache s'
 
 suite :: (?execRequests :: ExecReqFn) => String -> [Test.Framework.Test]

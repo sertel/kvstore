@@ -15,6 +15,26 @@ import qualified Microbenchmark                    as MB (BenchmarkConfig,
                                                           benchmarkOptionsParser,
                                                           buildSuite)
 
+-- DELETE AGAIN
+-- import qualified Data.ByteString.Lazy.Char8             as B8
+--
+-- import qualified Kvstore.InputOutput               as InOut
+-- import           Debug.Trace
+-- import           ServiceConfig
+-- import           Kvstore.KVSTypes
+-- import           Control.Monad.State
+--
+-- main :: IO ()
+-- main = evalStateT compute KVSState{ _compression=zlibComp, _decompression=zlibDecomp }
+--   where
+--     compute = do
+--        one <- InOut.compressTable $ B8.pack "{\"key-0\":{\"field-0\":\"value-0\"}}"
+--        two <- InOut.compressTable $ B8.pack "my-second-test-string"
+--        resOne <- B8.unpack <$> InOut.decompressTable one
+--        resTwo <- B8.unpack <$> InOut.decompressTable two
+--        traceM $ "result one: " ++ resOne
+--        traceM $ "result two: " ++ resTwo
+
 data Config = Config { testOrBench :: String
                      , bmConfig    :: MB.BenchmarkConfig }
 

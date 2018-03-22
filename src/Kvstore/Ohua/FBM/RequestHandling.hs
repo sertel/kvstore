@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Kvstore.Ohua.FBM.RequestHandling where
 
@@ -70,7 +71,16 @@ delete cache db tableId key = do
   let table = HM.lookup tableId cache
   case_ (isJust table)
         [
-          (True,  store deleteSerializeTableStateIdx deleteCompressTableStateIdx deleteEncryptTableStateIdx deleteStoreTableStateIdx db tableId $ HM.delete key $ fromJust table)
+          (True,  store deleteSerializeTableStateIdx
+                        deleteCompressTableStateIdx
+                        deleteEncryptTableStateIdx
+                        deleteStoreTableStateIdx
+                        db
+                        tableId
+                        -- $ HM.delete key $ fromJust table)
+                        $ HM.delete key $ (\case
+                                              Just v -> v
+                                              Nothing -> error "impossible!") table)
         , (False, return ())
         ]
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing

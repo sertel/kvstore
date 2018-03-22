@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts, TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Kvstore.Ohua.FBM.Cache where
 
@@ -25,7 +26,7 @@ import           Kvstore.Ohua.Cache
 
 -- algos
 
--- What if I use this algo on twice?! -> shared state deadlock
+-- What if I use this algo twice?! -> shared state deadlock
 prepareCacheEntry :: BS.ByteString -> OhuaM Table
 prepareCacheEntry serializedValTable = do
   decrypted <- liftWithIndex decryptTableStateIdx decryptTableSF serializedValTable
@@ -40,12 +41,18 @@ loadCacheEntry kvs db tableId =
   in
     case_ (isJust table)
       [
-        (True , return $ Just (tableId, fromJust table))
+        -- (True , return $ Just (tableId, fromJust table))
+        (True , return $ Just (tableId, (\case
+                                             Just v -> v
+                                             Nothing -> error "impossible!") table))
       , (False , do
             serializedValTable <- liftWithIndex loadTableStateIdx (loadTableSF db) tableId
-            case_ (isJust serializedValTable)
+            case_ (trace ("isJust: " ++ show (isJust serializedValTable)) $ isJust serializedValTable)
              [
-               (True , Just . (tableId,) <$> prepareCacheEntry (fromJust serializedValTable))
+               (True , Just . (tableId,) <$> prepareCacheEntry ((\case
+                                                                  Just v -> v
+                                                                  Nothing -> error "impossible!") serializedValTable))
+               -- (True , Just . (tableId,) . trace "here!!!" <$> prepareCacheEntry (trace "here!" $ fromJust serializedValTable))
              , (False , return Nothing)
              ])
       ]

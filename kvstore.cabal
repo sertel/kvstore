@@ -32,8 +32,8 @@ library
                      , Kvstore.Serialization
                      , DB_Iface
                      , Db_Types
-  other-modules:       KeyValueStore_Client
                      , Kvstore.InputOutput
+  other-modules:       KeyValueStore_Client
                      , Kvstore.Ohua.RequestHandling
                      , Kvstore.Ohua.FBM.RequestHandling
                      , Kvstore.Ohua.SBFM.RequestHandling

@@ -5,6 +5,7 @@ module Database.DatabaseService where
 import qualified Data.Text.Lazy         as T
 import           DB_Iface
 import           Db_Types
+import           Data.ByteString.Lazy   as BS
 
 data UpdateOnLoad = UpdateOnLoad Int
 
@@ -14,7 +15,7 @@ instance DB_Iface UpdateOnLoad where
   get :: UpdateOnLoad -> T.Text -> IO DBResponse
   get handler key = undefined
 
-  put :: UpdateOnLoad -> T.Text -> T.Text -> IO ()
+  put :: UpdateOnLoad -> T.Text -> BS.ByteString -> IO ()
   put handler key value = undefined
 
 
@@ -26,5 +27,5 @@ instance DB_Iface UpdateOnStore where
   get :: UpdateOnStore -> T.Text -> IO DBResponse
   get handler key = undefined
 
-  put :: UpdateOnStore -> T.Text -> T.Text -> IO ()
+  put :: UpdateOnStore -> T.Text -> BS.ByteString -> IO ()
   put handler key value = undefined

@@ -25,7 +25,7 @@ loadTable tableId = do
   serializedValTable <- liftIO $ DB.get db tableId
   case serializedValTable of
     (DBResponse Nothing) -> return Nothing
-    (DBResponse (Just v)) -> return $ Just $ Enc.encodeUtf8 v
+    (DBResponse (Just v)) -> return $ Just v
 
 deserializeTable :: BS.ByteString -> StateT (KVSState a) IO Table
 deserializeTable serializedTable = do
@@ -42,7 +42,7 @@ deserializeTable serializedTable = do
 storeTable :: DB.DB_Iface a => T.Text -> BS.ByteString -> StateT (KVSState a) IO ()
 storeTable key serializedTable = do
   db <- view storage <$> get
-  _ <- liftIO $ DB.put db key $ Enc.decodeUtf8 serializedTable
+  _ <- liftIO $ DB.put db key serializedTable
   return ()
 
 serializeTable :: Table -> StateT (KVSState a) IO BS.ByteString
@@ -96,7 +96,7 @@ decompressTable table = do
     where
       compute_ kvsstate@KVSState{_decompression=(Decompression decomp s)} =
                               let (t, s') = decomp s table
-                              in (t,kvsstate{_decompression=Decompression decomp s})
+                              in (t,kvsstate{_decompression=Decompression decomp s'})
 
 store :: DB.DB_Iface a => T.Text -> Table -> StateT (KVSState a) IO ()
 store tableId table = storeTable tableId =<< encryptTable =<< compressTable =<< serializeTable table
@@ -106,4 +106,4 @@ load tableId = do
   serializedValTable <- loadTable tableId
   case serializedValTable of
     Nothing -> return Nothing
-    (Just v) -> Just . (tableId,) <$> (deserializeTable =<< decryptTable =<< decompressTable v)
+    (Just v) -> Just . (tableId,) <$> (deserializeTable =<< decompressTable =<< decryptTable v)
