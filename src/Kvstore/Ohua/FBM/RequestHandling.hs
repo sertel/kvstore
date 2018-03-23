@@ -43,7 +43,7 @@ store serializeTableStateIdx
         serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
         compressedTable <- liftWithIndex compressTableStateIdx compressTable serializedTable
         encryptedTable <- liftWithIndex encryptTableStateIdx encryptTable compressedTable
-        _ <- liftWithIndex storeTableStateIdx (storeTable db tableId) serializedTable
+        _ <- liftWithIndex storeTableStateIdx (storeTable db tableId) encryptedTable
         return ()
 
 update :: (DB.DB_Iface db)

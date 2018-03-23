@@ -47,7 +47,7 @@ loadCacheEntry kvs db tableId =
                                              Nothing -> error "impossible!") table))
       , (False , do
             serializedValTable <- liftWithIndex loadTableStateIdx (loadTableSF db) tableId
-            case_ (trace ("isJust: " ++ show (isJust serializedValTable)) $ isJust serializedValTable)
+            case_ (isJust serializedValTable)
              [
                (True , Just . (tableId,) <$> prepareCacheEntry ((\case
                                                                   Just v -> v
