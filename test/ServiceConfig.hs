@@ -64,7 +64,7 @@ zlibComp :: Compression
 --                             $ \s t -> let c = compressWith s t
 --                                       in (c,s)
 zlibComp = flip Compression ()
-                            $ \s t -> let c = compress t
+                            $ \s t -> let c = trace "compressing" $ compress t
                                       in (c,s)
 
 zlibDecomp :: Decompression
@@ -86,14 +86,14 @@ aesEncryption = do
   aesState <- initAESState
   let e = flip Encryption aesState
                           $ \s@(AESState sk iv) t ->
-                              case encrypt sk iv (BS.toStrict t) of
+                              case trace "encrypting ... " (encrypt sk iv (BS.toStrict t)) of
                                     Left err -> error $ show err
-                                    Right eMsg -> (BS.fromStrict eMsg,s)
+                                    Right eMsg -> trace "encrypted" (BS.fromStrict eMsg,s)
       d = flip Decryption aesState
                           $ \s@(AESState sk iv) t ->
                                   case decrypt sk iv (BS.toStrict t) of
                                         Left err -> error $ show err
-                                        Right eMsg -> (BS.fromStrict eMsg,s)
+                                        Right eMsg -> trace "decrypted" (BS.fromStrict eMsg,s)
   return (e,d)
 
 noEnc :: Encryption

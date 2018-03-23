@@ -25,6 +25,7 @@ import           Data.Maybe
 import           Control.DeepSeq
 import           GHC.Generics
 
+import           Debug.Trace
 
 -- | Not required, but most general implementation
 data Key c a where
@@ -55,22 +56,22 @@ encrypt secretKey initIV msg =
 decrypt :: (BlockCipher c, ByteArray a) => Key c a -> IV c -> a -> Either CryptoError a
 decrypt = encrypt
 
--- exampleAES256 :: ByteString -> IO ()
--- exampleAES256 msg = do
---   -- secret key needs 256 bits (32 * 8)
---   secretKey <- genSecretKey (undefined :: AES256) 32
---   mInitIV <- genRandomIV (undefined :: AES256)
---   case mInitIV of
---     Nothing -> error "Failed to generate and initialization vector."
---     Just initIV -> do
---       let encryptedMsg = encrypt secretKey initIV msg
---           decryptedMsg = decrypt secretKey initIV =<< encryptedMsg
---       case (,) <$> encryptedMsg <*> decryptedMsg of
---         Left err -> error $ show err
---         Right (eMsg, dMsg) -> do
---           putStrLn $ "Original Message: " ++ show msg
---           putStrLn $ "Message after encryption: " ++ show eMsg
---           putStrLn $ "Message after decryption: " ++ show dMsg
+exampleAES256 :: ByteString -> IO ()
+exampleAES256 msg = do
+  -- secret key needs 256 bits (32 * 8)
+  secretKey <- genSecretKey (undefined :: AES256) 32
+  mInitIV <- genRandomIV (undefined :: AES256)
+  case mInitIV of
+    Nothing -> error "Failed to generate and initialization vector."
+    Just initIV -> do
+      let encryptedMsg = encrypt secretKey initIV msg
+          decryptedMsg = decrypt secretKey initIV =<< encryptedMsg
+      case (,) <$> encryptedMsg <*> decryptedMsg of
+        Left err -> error $ show err
+        Right (eMsg, dMsg) -> do
+          putStrLn $ "Original Message: " ++ show msg
+          putStrLn $ "Message after encryption: " ++ show eMsg
+          putStrLn $ "Message after decryption: " ++ show dMsg
 
 data AESState c a = AESState (Key c a) (IV c) deriving (Generic)
 -- deriving instance NFData (AESState c a)
@@ -85,7 +86,7 @@ instance (ByteArray a, BlockCipher c, NFData a, NFData c) => NFData (AESState c 
   rnf :: (NFData (Key c a), NFData (IV c)) => AESState c a -> ()
   rnf (AESState key iv) = rnf key `seq` rnf iv
 
-initAESState :: ByteArray a => IO (AESState AES256 a)
+initAESState :: (ByteArray a, Show a) => IO (AESState AES256 a)
 initAESState = do
   secretKey <- genSecretKey (undefined :: AES256) 32
   mInitIV <- fromJust <$> genRandomIV (undefined :: AES256)

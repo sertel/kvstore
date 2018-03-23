@@ -195,7 +195,7 @@ currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 --             => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
 runRequests operationCount keyCount bmState s = do
   (requests,_) <- runStateT (workload operationCount) bmState
-  traceM $ "requests:"
+  -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
   start <- currentTimeMillis
   (responses, s') <- requests `seq` flip runStateT s $ ?execRequests requests
@@ -235,8 +235,8 @@ data ScalabilityResult = ScalabilityResult { version :: String
 scalability name numThreads = do
     results <- foldM (\res n -> do
                       _ <- setNumCapabilities n
-                      -- r <- runMultipleBatches 2000 20 20
-                      r <- runMultipleBatches 20 20 1
+                      r <- runMultipleBatches 20000 20 20
+                      -- r <- runMultipleBatches 20 20 1
                       return $ res ++ [r])
                     []
                     $ take numThreads [1,2..]

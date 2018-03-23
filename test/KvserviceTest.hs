@@ -35,6 +35,12 @@ import qualified Microbenchmark                    as MB (BenchmarkConfig,
 --        traceM $ "result one: " ++ resOne
 --        traceM $ "result two: " ++ resTwo
 
+-- import Crypto
+-- import qualified Data.ByteString.Char8             as B8
+--
+-- main :: IO ()
+-- main = exampleAES256 $ B8.pack "my stupid test string"
+
 data Config = Config { testOrBench :: String
                      , bmConfig    :: MB.BenchmarkConfig }
 

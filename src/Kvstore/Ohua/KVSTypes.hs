@@ -15,6 +15,8 @@ import           Data.Typeable
 import qualified Data.ByteString.Lazy       as BS
 import           Control.DeepSeq
 
+import           Debug.Trace
+
 instance DS.NFData Operation
 instance DS.NFData KVResponse
 
@@ -142,6 +144,7 @@ globalState ser deser comp decomp enc dec =
                     , toS $ deleteCompressTableState comp
                     , toS $ deleteEncryptTableState enc
                     ]
+
 
 convertState :: [SE.S] -> (Serialization, Deserialization, Compression, Decompression, Encryption, Decryption)
 convertState s = ( fromS $ s !! updateSerializeTableStateIdx
