@@ -37,7 +37,7 @@ execRequestsOhua cache db reqs = do
   --       this fold can later on be optimized in the streams version
   --       because only the final step of loading the data is essentially
   --       to be folded over!
-  traceM "here!"
+
   newEntries <- smap (CF.loadCacheEntry cache db) [kVRequest_table req | req <- Vector.toList reqs]
 
   cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
