@@ -235,7 +235,7 @@ data ScalabilityResult = ScalabilityResult { version :: String
 scalability name numThreads = do
     results <- foldM (\res n -> do
                       _ <- setNumCapabilities n
-                      r <- runMultipleBatches 20000 20 20
+                      r <- runMultipleBatches 2000 20 20
                       -- r <- runMultipleBatches 20 20 1
                       return $ res ++ [r])
                     []

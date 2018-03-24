@@ -64,7 +64,7 @@ zlibComp :: Compression
 --                             $ \s t -> let c = compressWith s t
 --                                       in (c,s)
 zlibComp = flip Compression ()
-                            $ \s t -> let c = trace "compressing" $ compress t
+                            $ \s t -> let c = compress t
                                       in (c,s)
 
 zlibDecomp :: Decompression
