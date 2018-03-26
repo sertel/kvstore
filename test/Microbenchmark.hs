@@ -184,7 +184,7 @@ reqBenchmarkState keyCount = BenchmarkState
                                 1 -- _tableCount
                                 (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
                                 (RangeGen 1 keyCount $ mkStdGen 0) -- _keySelection
-                                (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+                                (RangeGen 0 4 $ mkStdGen 0) -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
                                 (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
                                 (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
 
@@ -235,7 +235,8 @@ data ScalabilityResult = ScalabilityResult { version :: String
 scalability name numThreads = do
     results <- foldM (\res n -> do
                       _ <- setNumCapabilities n
-                      r <- runMultipleBatches 2000 20 20
+                      -- r <- runMultipleBatches 2000 20 20
+                      r <- runMultipleBatches 2000 30 20
                       -- r <- runMultipleBatches 20 20 1
                       return $ res ++ [r])
                     []
