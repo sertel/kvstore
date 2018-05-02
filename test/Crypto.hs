@@ -80,14 +80,12 @@ instance NFData a => NFData (Key c a) where
 
 instance NFData (IV c) where
   -- rnf :: forall byteArray . ByteArray byteArray => IV byteArray -> ()
-  rnf = rnf  -- the data constructor for IV is hidden and there is no method to access the internal byte string
+  rnf = (`seq` ())  -- the data constructor for IV is hidden and there is no method to access the internal byte string
 
 instance (ByteArray a, BlockCipher c, NFData a, NFData c) => NFData (AESState c a) where
   rnf :: (NFData (Key c a), NFData (IV c)) => AESState c a -> ()
   rnf (AESState key iv) = rnf key `seq` rnf iv
 
 initAESState :: (ByteArray a, Show a) => IO (AESState AES256 a)
-initAESState = do
-  secretKey <- genSecretKey (undefined :: AES256) 32
-  mInitIV <- fromJust <$> genRandomIV (undefined :: AES256)
-  return $ AESState secretKey mInitIV
+initAESState =
+  AESState <$> genSecretKey undefined 32 <*> (fromJust <$> genRandomIV undefined)

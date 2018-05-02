@@ -3,7 +3,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass, BangPatterns #-}
 
 module ServiceConfig where
 
@@ -24,6 +24,8 @@ import           Control.Concurrent (threadDelay)
 import           GHC.Generics
 
 import           Crypto
+import GHC.Stack
+import Control.Monad
 
 
 data MockDB = MockDB {
@@ -36,17 +38,17 @@ instance DB.DB_Iface MockDB where
   get (MockDB dbRef minLatency) key = do
     -- traceM $ "getting data for key: " ++ show key
     resp <- DBResponse . HM.lookup key <$> readIORef dbRef
-    case minLatency of { 0 -> return (); _ -> threadDelay minLatency }
+    unless (minLatency == 0) $ threadDelay minLatency
     return resp
 
   put :: MockDB -> T.Text -> BS.ByteString -> IO ()
-  put (MockDB dbRef minLatency) key value = do
-    db <- value `seq` readIORef dbRef
+  put (MockDB dbRef minLatency) key !value = do
+    db <- readIORef dbRef
     -- traceM $ "key: " ++ show key
     -- let convert = \case (Just p) -> p; Nothing -> T.empty
     let db' = HM.insert key value db
     writeIORef dbRef db'
-    case minLatency of { 0 -> return (); _ -> threadDelay minLatency }
+    unless (minLatency == 0) $ threadDelay minLatency
 
 deriving instance Generic CompressParams
 deriving instance NFData CompressParams
@@ -81,19 +83,19 @@ noComp = Compression (\s t -> (t, s)) ()
 noDecomp :: Decompression
 noDecomp = Decompression (\s t -> (t, s)) ()
 
-aesEncryption :: IO (Encryption, Decryption)
+aesEncryption :: HasCallStack => IO (Encryption, Decryption)
 aesEncryption = do
   aesState <- initAESState
   let e = flip Encryption aesState
                           $ \s@(AESState sk iv) t ->
-                              case trace "encrypting ... " (encrypt sk iv (BS.toStrict t)) of
+                              case (encrypt sk iv (BS.toStrict t)) of
                                     Left err -> error $ show err
-                                    Right eMsg -> trace "encrypted" (BS.fromStrict eMsg,s)
+                                    Right eMsg -> (BS.fromStrict eMsg,s)
       d = flip Decryption aesState
                           $ \s@(AESState sk iv) t ->
                                   case decrypt sk iv (BS.toStrict t) of
                                         Left err -> error $ show err
-                                        Right eMsg -> trace "decrypted" (BS.fromStrict eMsg,s)
+                                        Right eMsg -> (BS.fromStrict eMsg,s)
   return (e,d)
 
 noEnc :: Encryption
