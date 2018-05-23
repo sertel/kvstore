@@ -78,36 +78,34 @@ updateStoreTableStateIdx = 12 :: Int
 
 loadTableState = ()
 loadTableStateIdx = 13 :: Int
-foldINSERTsIntoCacheState = ()
-foldINSERTsIntoCacheStateIdx = 14 :: Int
 
 decryptTableState :: Decryption -> Decryption
 decryptTableState = id
-decryptTableStateIdx = 15 :: Int
+decryptTableStateIdx = 14 :: Int
 decompressTableState :: Decompression -> Decompression
 decompressTableState = id
-decompressTableStateIdx = 16 :: Int
+decompressTableStateIdx = 15 :: Int
 
 insertCompressTableState :: Compression -> Compression
 insertCompressTableState = id
-insertCompressTableStateIdx = 17 :: Int
+insertCompressTableStateIdx = 16 :: Int
 insertEncryptTableState :: Encryption -> Encryption
 insertEncryptTableState = id
-insertEncryptTableStateIdx = 18 :: Int
+insertEncryptTableStateIdx = 17 :: Int
 
 updateCompressTableState :: Compression -> Compression
 updateCompressTableState = id
-updateCompressTableStateIdx = 19 :: Int
+updateCompressTableStateIdx = 18 :: Int
 updateEncryptTableState :: Encryption -> Encryption
 updateEncryptTableState = id
-updateEncryptTableStateIdx = 20 :: Int
+updateEncryptTableStateIdx = 19 :: Int
 
 deleteCompressTableState :: Compression -> Compression
 deleteCompressTableState = id
-deleteCompressTableStateIdx = 21 :: Int
+deleteCompressTableStateIdx = 20 :: Int
 deleteEncryptTableState :: Encryption -> Encryption
 deleteEncryptTableState = id
-deleteEncryptTableStateIdx = 22 :: Int
+deleteEncryptTableStateIdx = 21 :: Int
 
 lastStateIdx = deleteEncryptTableStateIdx
 
@@ -132,7 +130,6 @@ globalState ser deser comp decomp enc dec =
                     , toS deleteStoreTableState
                     , toS updateStoreTableState
                     , toS loadTableState
-                    , toS foldINSERTsIntoCacheState
 
                     , toS $ decryptTableState dec
                     , toS $ decompressTableState decomp

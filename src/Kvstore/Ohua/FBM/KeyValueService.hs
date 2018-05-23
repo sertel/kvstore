@@ -42,7 +42,11 @@ execRequestsOhua cache db reqs = do
 
   cache' <- liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
 
-  cache'' <- liftWithIndex foldINSERTsIntoCacheStateIdx (foldINSERTsIntoCache cache') $ Vector.toList $ Cache.findInserts reqs
+-- make sure the tests still run after removing this
+--  cache'' <- liftWithIndex foldINSERTsIntoCacheStateIdx (foldINSERTsIntoCache cache') $ Vector.toList $ Cache.findInserts reqs
+
+
+  let cache'' = cache'
 
   responses <- smap (RH.serve cache'' db) $ Vector.toList reqs
 

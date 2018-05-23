@@ -23,6 +23,7 @@ import           Debug.Trace
 import           Data.Dynamic2
 import           Monad.StreamsBasedExplicitAPI
 import           Monad.StreamsBasedFreeMonad
+import Control.Monad.Stream.Chan
 
 import           Kvstore.Ohua.KeyValueService
 import           Kvstore.Ohua.KVSTypes
@@ -48,15 +49,15 @@ execRequestsOhua cache db reqs = do
   cache' <- lift2WithIndex foldIntoCacheStateIdx
                            foldIntoCache cache newEntries
 
-  cache'' <- lift2WithIndex foldINSERTsIntoCacheStateIdx
-                           (\c r -> foldINSERTsIntoCache c $ Vector.toList $ Cache.findInserts r)
-                           cache' reqs
+  -- cache'' <- lift2WithIndex foldINSERTsIntoCacheStateIdx
+  --                          (\c r -> foldINSERTsIntoCache c $ Vector.toList $ Cache.findInserts r)
+  --                          cache' reqs
 
   listReq <- liftWithIndex reqsToListStateIdx
                            (return . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [KVRequest])
                            reqs
-  responses <- smap (RH.serve cache'' db) listReq
-  cache''' <- lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache'' reqs
+  responses <- smap (RH.serve cache' db) listReq
+  cache''' <- lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache' reqs
   lift3WithIndex finalResultStateIdx
                  ((\r c d -> return (Vector.fromList r, c, d)) :: [KVResponse] -> KVStore -> db -> StateT Stateless IO (Vector.Vector KVResponse, KVStore, db))
                  responses cache''' db
@@ -66,18 +67,24 @@ execRequestsFunctional :: (DB.DB_Iface db, Typeable db)
                        => Vector.Vector KVRequest
                        -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
-  kvsstate@KVSState{ _cache=cache_, _storage=db
-                   , _serializer=ser, _deserializer=deser
-                   , _compression=comp, _decompression=decomp
-                   , _encryption=enc, _decryption=dec } <- get
-  (responses, cache'', db'')
-                <- liftIO $ runOhuaM -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
-                                     (do
-                                       c <- sfConst' cache_
-                                       d <- sfConst' db
-                                       r <- sfConst' reqs
-                                       execRequestsOhua c d r)
-                                     $ SFBMTypes.globalState ser deser comp decomp enc dec
+    kvsstate@KVSState { _cache = cache_
+                      , _storage = db
+                      , _serializer = ser
+                      , _deserializer = deser
+                      , _compression = comp
+                      , _decompression = decomp
+                      , _encryption = enc
+                      , _decryption = dec
+                      } <- get
+    (responses, cache'', db'') <-
+        liftIO $
+        runChanM $
+        runOhuaM -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
+            (do c <- sfConst' cache_
+                d <- sfConst' db
+                r <- sfConst' reqs
+                execRequestsOhua c d r) $
+        SFBMTypes.globalState ser deser comp decomp enc dec
   -- let (ser',deser') = convertState serde' -- TODO
-  put kvsstate{_storage=db'', _cache=cache''}
-  return responses
+    put kvsstate {_storage = db'', _cache = cache''}
+    return responses
