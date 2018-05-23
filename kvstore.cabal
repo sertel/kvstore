@@ -57,14 +57,14 @@ library
                      , statefulness
                      , deepseq
                      , lens
-  ghc-options:         -ddump-to-file -ddump-simpl -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
+  ghc-options:         -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   default-language:    Haskell2010
 
 
 executable kv-service-exe
   hs-source-dirs:      kvs-exe
   main-is:             KVService.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-simpl -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   build-depends:       base
                      , kvstore
                      , mtl
@@ -81,7 +81,7 @@ executable kv-service-exe
 executable db-service-exe
   hs-source-dirs:      db-exe
   main-is:             DBService.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-simpl -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   build-depends:       base
                      , kvstore
                      , mtl
