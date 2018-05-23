@@ -14,6 +14,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.State
 import System.Random
+import Data.Void
 
 import GHC.Conc.Sync (setNumCapabilities)
 
@@ -41,6 +42,10 @@ import Statistics.Sample (mean)
 import Debug.Trace
 import Text.Printf
 
+instance RandomGen Void where
+  next g = (absurd g, g)
+  split g = (g, g)
+
 initState :: Bool -> IO (KVSState MockDB)
 initState useEncryption = do
     db <- newIORef HM.empty
@@ -51,7 +56,8 @@ initState useEncryption = do
     return $
         KVSState
             HM.empty
-            (MockDB db 0) -- latency is 0 for loading the DB and then we set it for the requests
+            (MockDB db 0) -- latency is 0 for loading the DB and then
+                          -- we set it for the requests
             jsonSer
             jsonDeSer
             zlibComp
@@ -193,21 +199,28 @@ showState KVSState {_cache = cache, _storage = MockDB dbRef _} = do
     db <- readIORef dbRef
     return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
+defaultBenchmarkState =
+    BenchmarkState
+        { _fieldCount = 10
+        , _fieldSelection = RangeGen 0 10 $ mkStdGen 0
+        , _valueSizeGen = RangeGen 5 10 $ mkStdGen 0
+        , _tableCount = 1
+        , _tableSelection = RangeGen 1 1 $ mkStdGen 0
+        , _keySelection = LinearGen 1
+        , _operationSelection = undefined
+        , _fieldCountSelection = RangeGen 3 10 $ mkStdGen 0
+        , _scanCountSelection = RangeGen 5 10 $ mkStdGen 0
+        }
+  -- traceM "requ
+
 loadDB useEncryption keyCount = do
     s <- initState useEncryption
   -- fill the db first
     (requests, _) <-
         runStateT (workload keyCount) $
-        BenchmarkState
-            10 -- _fieldCount
-            (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
-            (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
-            1 -- _tableCount
-            (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-            (LinearGen 1) -- _keySelection
-            (RangeGen 0 0 $ mkStdGen 0) -- _operationSelection (INSERT only)
-            (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
-            (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
+        (BenchmarkState
+            { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
+            } :: BenchmarkState Void)
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-
@@ -221,16 +234,10 @@ loadDB useEncryption keyCount = do
   -- traceM "done with insert."
 
 reqBenchmarkState keyCount =
-    BenchmarkState
-        10 -- _fieldCount
-        (RangeGen 0 10 $ mkStdGen 0) -- _fieldSelection
-        (RangeGen 5 10 $ mkStdGen 0) -- _valueSizeGen
-        1 -- _tableCount
-        (RangeGen 1 1 $ mkStdGen 0) -- _tableSelection
-        (RangeGen 1 keyCount $ mkStdGen 0) -- _keySelection
-        (RangeGen 0 4 $ mkStdGen 0) -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
-        (RangeGen 3 10 $ mkStdGen 0) -- _fieldCountSelection
-        (RangeGen 5 10 $ mkStdGen 0) -- _scanCountSelection
+    defaultBenchmarkState
+        { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
+        , _operationSelection = RangeGen 0 4 $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+        }
 
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 
@@ -276,7 +283,7 @@ runMultipleBatches BatchConfig { batchUseEncryption = useEncryption
                  (st', execTime) <- runRequests requestCount keyCount bmState st
                  return $ st' `seq` (st', execTimes ++ [execTime]))
             (s, []) $
-        take batchSize [1..]
+        take batchSize [1 ..]
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
@@ -322,12 +329,14 @@ scalability name conf = do
 
 buildSuite conf = [testCase "Done!" $ runAsSingleTest conf]
 
+defaultOutputFile = "scalability.json"
+
 runAsSingleTest conf = do
     results <-
         forM (filter isSelected versions) $ \(version, name) ->
             let ?execRequests = version
              in scalability name conf
-    BS.writeFile "scalability.json" $ AE.encode $ HM.fromList results
+    BS.writeFile (outputFile conf) $ AE.encode $ HM.fromList results
     where
       selected = selectedVersions conf
       isSelected | null selected = const True
@@ -339,6 +348,7 @@ data BenchmarkConfig = BenchmarkConfig
     , useEncryption :: Bool
     , selectedVersions :: [String]
     , singleTestOnly :: Bool
+    , outputFile :: FilePath
     }
 
 benchmarkOptionsParser =
@@ -365,6 +375,11 @@ benchmarkOptionsParser =
                   "Select only specific implementation versions (can be supplied multiple times, default all)" <>
               completeWith versionNames)) <*>
     switch
-        (long "single-test-only" <> help "only run test for full set of cores")
+        (long "single-test-only" <> help "only run test for full set of cores") <*>
+    strOption
+        (long "output" <> short 'o' <>
+         help "Output file to write the results to" <>
+         value defaultOutputFile <>
+         showDefault)
   where
     versionNames = map snd versions
