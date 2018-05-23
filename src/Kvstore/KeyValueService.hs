@@ -110,7 +110,6 @@ execRequestsCoarse :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSS
 execRequestsCoarse reqs = do
   -- cache management: load all entries needed to process the requests
   Cache.refresh reqs
-
   -- request handling
   responses <- mapM RH.serve reqs
   -- (\x -> traceM $ "cache after request handling: " ++ show x) . getKvs =<< get
@@ -127,7 +126,7 @@ execRequestsFine :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSSta
 execRequestsFine reqs = do
   -- cache management: load all entries needed to process the requests
   newEntries <- mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs]
-  (\_ -> return ()) =<< (mapM Cache.insertTableIntoCache . catMaybes) newEntries
+  mapM_ Cache.insertTableIntoCache $ catMaybes newEntries
 
   -- request handling
   mapM_ Cache.mergeINSERTIntoCache $ Cache.findInserts reqs
@@ -135,7 +134,7 @@ execRequestsFine reqs = do
   -- (\x -> traceM $ "cache after request handling: " ++ show x) . getKvs =<< get
 
   -- cache management: propagate side-effects to cache
-  (mapM_  Cache.invalidateReq . Cache.findWrites) reqs
+  mapM_ Cache.invalidateReq $ Cache.findWrites reqs
   -- (\x -> traceM $ "cache after invalidating: " ++ show x) . getKvs =<< get
 
   return responses

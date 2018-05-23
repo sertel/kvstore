@@ -25,8 +25,6 @@ jsonSer = Serialization
 
 jsonDeSer :: Deserialization
 jsonDeSer = Deserialization
-  { _deserialize = \() bs -> (((\case
-                                  Just v -> v
-                                  Nothing -> error $ "impossible!" ++ show bs) . AE.decode) bs, ())
+  { _deserialize = \() bs -> (fromMaybe (error $ "impossible!" ++ show bs) $ AE.decode bs, ())
   , _deSerState = ()
   }
