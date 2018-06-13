@@ -77,6 +77,7 @@ insert tableId key (Just values) = do
   InOut.store tableId table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
+-- TODO The delete doesn't actually work ... I don't know why sebastian didn't implement it
 delete :: (DB.DB_Iface a) => T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete tableId key = do
   s@KVSState{_cache=cache} <- get
@@ -90,6 +91,10 @@ serve (KVRequest op table key fields recordCount values) =
   case op of
     READ   -> read_ table key fields
     SCAN   -> scan table key recordCount
-    UPDATE -> update table key values
-    INSERT -> insert table key values
-    DELETE -> delete table key
+    a -> pure $ KVResponse a (Just mempty) Nothing Nothing
+
+writeback :: DB.DB_Iface db => Set.HashSet T.Text -> StateT (KVSState db) IO ()
+writeback = mapM_ write . Set.toList
+  where
+    write tableId =
+        preuse (cache . ix tableId) >>= InOut.store tableId . fromMaybe mempty

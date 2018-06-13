@@ -46,55 +46,25 @@ store serializeTableStateIdx
         _ <- liftWithIndex storeTableStateIdx (storeTable db tableId) encryptedTable
         return ()
 
-update :: (DB.DB_Iface db)
-       => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
-       -> OhuaM KVResponse
-update cache db tableId key Nothing = update cache db tableId key $ Just HM.empty
-update cache db tableId key (Just values) = do
-  table' <- liftWithIndex calcUpdateStateIdx (calculateUpdate cache tableId key) values
-  store updateSerializeTableStateIdx updateCompressTableStateIdx updateEncryptTableStateIdx updateStoreTableStateIdx db tableId table'
-  return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
-
-insert :: (DB.DB_Iface db)
-       => KVStore -> db -> T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text)
-       -> OhuaM KVResponse
-insert cache db tableId key Nothing = insert cache db tableId key $ Just HM.empty
-insert cache db tableId key (Just values) = do
-  table' <- liftWithIndex calcInsertStateIdx (calculateInsert cache tableId key) values
-  store insertSerializeTableStateIdx insertCompressTableStateIdx insertEncryptTableStateIdx insertStoreTableStateIdx db tableId table'
-  return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
-
-delete :: (DB.DB_Iface db)
-       => KVStore -> db -> T.Text -> T.Text
-       -> OhuaM KVResponse
-delete cache db tableId key = do
-  let table = HM.lookup tableId cache
-  case_ (isJust table)
-        [
-          (True,  store deleteSerializeTableStateIdx
-                        deleteCompressTableStateIdx
-                        deleteEncryptTableStateIdx
-                        deleteStoreTableStateIdx
-                        db
-                        tableId
-                        -- $ HM.delete key $ fromJust table)
-                        $ HM.delete key $ (\case
-                                              Just v -> v
-                                              Nothing -> error "impossible!") table)
-        , (False, return ())
-        ]
-  return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
-
-
-serve :: (DB.DB_Iface a)
-      => KVStore -> a -> KVRequest -> OhuaM KVResponse
-serve cache db (KVRequest op tableId key fields recordCount values) = do
+serveReads :: (DB.DB_Iface a) => KVStore -> a -> KVRequest -> OhuaM KVResponse
+serveReads cache db (KVRequest op tableId key fields recordCount values) = do
   resp <- case_ op
     [
       (READ   , liftWithIndex rEADReqHandlingStateIdx (read_ cache tableId key) fields)
     , (SCAN   , liftWithIndex sCANReqHandlingStateIdx (scan cache tableId key) recordCount)
-    , (UPDATE , update cache db tableId key values)
-    , (INSERT , insert cache db tableId key values)
-    , (DELETE , delete cache db tableId key)
+    , (UPDATE , stdResp UPDATE)
+    , (INSERT , stdResp INSERT)
+    , (DELETE , stdResp DELETE)
     ]
+
   return resp
+  where stdResp ty = return $ KVResponse ty (Just mempty) Nothing Nothing
+
+
+writeback :: DB.DB_Iface db => KVStore -> db -> Set.HashSet T.Text -> OhuaM ()
+writeback cache db = void . smap (\t -> store writebackSerializeTableStateIdx
+                        writebackCompressTableStateIdx
+                        writebackEncryptTableStateIdx
+                        writebackStoreTableStateIdx
+                        db
+                        t (cache HM.! t)) . Set.toList

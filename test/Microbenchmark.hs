@@ -218,9 +218,9 @@ loadDB useEncryption keyCount = do
   -- fill the db first
     (requests, _) <-
         runStateT (workload keyCount) $
-        (BenchmarkState
+        (defaultBenchmarkState
             { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
-            } :: BenchmarkState Void)
+            } )
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-

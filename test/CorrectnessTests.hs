@@ -39,7 +39,7 @@ initState = do
                     noDec
 
 unpackDB :: HM.HashMap T.Text BS.ByteString -> HM.HashMap T.Text T.Text
-unpackDB = HM.fromList . map (\(k,v) -> (k, T.pack $ B8.unpack v)) . HM.toList
+unpackDB = HM.map (T.pack . B8.unpack)
 
 singleInsert :: (?execRequests :: ExecReqFn) => Assertion
 singleInsert = do

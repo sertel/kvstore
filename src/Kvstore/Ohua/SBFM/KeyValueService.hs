@@ -25,47 +25,86 @@ import           Monad.StreamsBasedExplicitAPI
 import           Monad.StreamsBasedFreeMonad
 import Control.Monad.Stream.Chan
 
+import Kvstore.KeyValueService
 import           Kvstore.Ohua.KeyValueService
 import           Kvstore.Ohua.KVSTypes
 import qualified Kvstore.Ohua.SBFM.Cache           as CF
 import           Kvstore.Ohua.SBFM.KVSTypes        as SFBMTypes
-import qualified Kvstore.Ohua.SBFM.RequestHandling as RH (serve)
+import qualified Kvstore.Ohua.SBFM.RequestHandling as RH
 
 
-execRequestsOhua :: (DB.DB_Iface db, Typeable db)
-                 => Var KVStore -> Var db -> Var (Vector.Vector KVRequest)
-                 -> ASTM [Dynamic] (Var (Vector.Vector KVResponse, KVStore, db))
-execRequestsOhua cache db reqs = do
-
+execRequestsOhua ::
+       (DB.DB_Iface db, Typeable db)
+    => Var KVStore
+    -> Var db
+    -> Var (Vector.Vector KVRequest)
+    -> ASTM [Dynamic] (Var (Vector.Vector KVResponse, KVStore, db))
+execRequestsOhua cache db reqs
   -- FIXME if the db is folded over then this also turns into a fold.
   --       this fold can later on be optimized in the streams version
   --       because only the final step of loading the data is essentially
   --       to be folded over!
-  genReq <- liftWithIndex reqGeneratorStateIdx
-                          ((\r -> return [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest ->  StateT Stateless IO [T.Text])
-                          reqs
-  newEntries <- smap (CF.loadCacheEntry cache db) genReq
-
-  cache' <- lift2WithIndex foldIntoCacheStateIdx
-                           foldIntoCache cache newEntries
-
+ = do
+    genReq <-
+        liftWithIndex
+            reqGeneratorStateIdx
+            ((\r -> return [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
+            reqs
+    newEntries <- smap (CF.loadCacheEntry cache db) genReq
+    cache' <-
+        lift2WithIndex foldIntoCacheStateIdx foldIntoCache cache newEntries
   -- cache'' <- lift2WithIndex foldINSERTsIntoCacheStateIdx
   --                          (\c r -> foldINSERTsIntoCache c $ Vector.toList $ Cache.findInserts r)
   --                          cache' reqs
+    listReq <-
+        liftWithIndex
+            reqsToListStateIdx
+            (return . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [KVRequest])
+            reqs
+    db' <-
+        do writeList <-
+               liftWithIndex
+                   getWriteListIdx
+                   (RH.pureUnitSf . Vector.toList . Cache.findWrites)
+                   reqs
+           noWritesPresent <-
+               liftWithIndex
+                   areWritesPresentIndex
+                   (RH.pureUnitSf . null)
+                   writeList
+           if_ noWritesPresent (return db) $ do
+               foldRes <-
+                   lift2WithIndex
+                       foldWritesIntoCacheIdx
+                       (\a b -> RH.pureUnitSf $ foldWritesIntoCache a b)
+                       cache'
+                       writeList
+               touched <-
+                   liftWithIndex getTouchedIdx (RH.pureUnitSf . fst) foldRes
+               enrichedCache <-
+                   liftWithIndex
+                       getEnrichedStateIdx
+                       (RH.pureUnitSf . snd)
+                       foldRes
+               u <- RH.writeback enrichedCache db touched
+               lift2WithIndex seqDBIndex (\db _ -> RH.pureUnitSf db) db u
+    responses <- smap (RH.serve cache' db) listReq
+    cache''' <-
+        lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache' reqs
+    lift3WithIndex
+        finalResultStateIdx
+        ((\r c d -> return (Vector.fromList r, c, d)) :: [KVResponse] -> KVStore -> db -> StateT Stateless IO ( Vector.Vector KVResponse
+                                                                                                              , KVStore
+                                                                                                              , db))
+        responses
+        cache'''
+        db'
 
-  listReq <- liftWithIndex reqsToListStateIdx
-                           (return . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [KVRequest])
-                           reqs
-  responses <- smap (RH.serve cache' db) listReq
-  cache''' <- lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache' reqs
-  lift3WithIndex finalResultStateIdx
-                 ((\r c d -> return (Vector.fromList r, c, d)) :: [KVResponse] -> KVStore -> db -> StateT Stateless IO (Vector.Vector KVResponse, KVStore, db))
-                 responses cache''' db
 
-
-execRequestsFunctional :: (DB.DB_Iface db, Typeable db)
-                       => Vector.Vector KVRequest
-                       -> StateT (KVSState db) IO (Vector.Vector KVResponse)
+execRequestsFunctional ::
+       (DB.DB_Iface db, Typeable db)
+    => Vector.Vector KVRequest
+    -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional reqs = do
     kvsstate@KVSState { _cache = cache_
                       , _storage = db

@@ -40,20 +40,22 @@ serveIsUpdateState = ()
 serveIsUpdateStateIdx = KVST.lastStateIdx + 13 :: Int
 serveIsInsertState = ()
 serveIsInsertStateIdx = KVST.lastStateIdx + 14 :: Int
-deleteTableLookupState = ()
-deleteTableLookupStateIdx = KVST.lastStateIdx + 15 :: Int
-deleteTableLoadedState = ()
-deleteTableLoadedStateIdx = KVST.lastStateIdx + 16 :: Int
-deleteComposeResultState = ()
-deleteComposeResultStateIdx = KVST.lastStateIdx + 17 :: Int
+writebackGetTableIdx = KVST.lastStateIdx + 15
+writebackTouchedListIdx = KVST.lastStateIdx + 16
 
+requestHandlingLastIdx = writebackTouchedListIdx
 -- KeyValueService
 reqGeneratorState = ()
-reqGeneratorStateIdx = KVST.lastStateIdx + 18 :: Int
+reqGeneratorStateIdx = requestHandlingLastIdx + 1 :: Int
 reqsToListState = ()
-reqsToListStateIdx = KVST.lastStateIdx + 19 :: Int
+reqsToListStateIdx = requestHandlingLastIdx + 2 :: Int
 finalResultState = ()
-finalResultStateIdx = KVST.lastStateIdx + 20 :: Int
+finalResultStateIdx = requestHandlingLastIdx + 3 :: Int
+getTouchedIdx = requestHandlingLastIdx + 4
+getEnrichedStateIdx = requestHandlingLastIdx + 5
+getWriteListIdx = requestHandlingLastIdx + 6
+seqDBIndex = requestHandlingLastIdx + 7
+areWritesPresentIndex = requestHandlingLastIdx + 8
 
 
 additionalGlobalState = [
@@ -74,15 +76,18 @@ additionalGlobalState = [
                         , toDyn serveIsScanState
                         , toDyn serveIsUpdateState
                         , toDyn serveIsInsertState
-                        , toDyn deleteTableLookupState
-                        , toDyn deleteTableLoadedState
-                        , toDyn deleteComposeResultState
+                        , toDyn () -- writeback get table
+                        , toDyn () -- writeback touched list
 
                         -- KeyValueService
                         , toDyn reqGeneratorState
                         , toDyn reqsToListState
                         , toDyn finalResultState
-
+                        , toDyn () -- get touched
+                        , toDyn () -- get enriched state
+                        , toDyn () -- get write list
+                        , toDyn () -- seq refreshed db
+                        , toDyn () -- are writes present
                         ]
 
 globalState :: Serialization -> Deserialization ->

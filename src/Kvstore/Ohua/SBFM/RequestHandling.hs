@@ -34,105 +34,94 @@ import           Kvstore.Ohua.RequestHandling
 --
 
 prepareTable :: Int -> Int -> Int -> Var Table -> ASTM [Dynamic] (Var BS.ByteString)
-prepareTable serializeTableStateIdx
-      compressTableStateIdx
-      encryptTableStateIdx
-      table = do
-        serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
-        compressedTable <- liftWithIndex compressTableStateIdx compressTable serializedTable
-        liftWithIndex encryptTableStateIdx encryptTable compressedTable
+prepareTable serializeTableStateIdx compressTableStateIdx encryptTableStateIdx table = do
+    serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
+    compressedTable <-
+        liftWithIndex compressTableStateIdx compressTable serializedTable
+    liftWithIndex encryptTableStateIdx encryptTable compressedTable
         -- _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
 
-update :: (DB.DB_Iface db, Typeable db)
-       => Var KVStore -> Var db -> Var T.Text -> Var T.Text -> Var (Maybe (HM.HashMap T.Text T.Text))
-       -> ASTM [Dynamic] (Var KVResponse)
-update cache db tableId key values = do
-  table' <- lift4WithIndex calcUpdateStateIdx
-                           (\ c t k v -> calculateUpdate c t k $ fromMaybe HM.empty v)
-                           cache tableId key values
-  preparedTable <- prepareTable updateSerializeTableStateIdx updateCompressTableStateIdx updateEncryptTableStateIdx table'
-  lift3WithIndex updateStoreTableStateIdx
-                 (\d t s -> const (KVResponse UPDATE (Just HM.empty) Nothing Nothing) <$> storeTable d t s)
-                 db tableId preparedTable
+pureUnitSf :: a -> StateT () IO a
+pureUnitSf = pure
 
-insert :: (DB.DB_Iface db, Typeable db)
-       => Var KVStore -> Var db -> Var T.Text -> Var T.Text -> Var (Maybe (HM.HashMap T.Text T.Text))
-       -> ASTM [Dynamic] (Var KVResponse)
-insert cache db tableId key values = do
-  table' <- lift4WithIndex calcInsertStateIdx
-                           (\ c t k v -> calculateInsert c t k $ fromMaybe HM.empty v)
-                           cache tableId key values
-  preparedTable <- prepareTable insertSerializeTableStateIdx insertCompressTableStateIdx insertEncryptTableStateIdx table'
-  lift3WithIndex insertStoreTableStateIdx
-                 (\d t s -> const (KVResponse INSERT (Just HM.empty) Nothing Nothing) <$> storeTable d t s)
-                 db tableId preparedTable
-
-delete :: (DB.DB_Iface db, Typeable db)
-       => Var KVStore -> Var db -> Var T.Text -> Var T.Text
-       -> ASTM [Dynamic] (Var KVResponse)
-delete cache db tableId key = do
-  table <- lift2WithIndex deleteTableLookupStateIdx
-                          ((return .) . HM.lookup :: T.Text -> KVStore -> StateT Stateless IO (Maybe Table))
-                          tableId cache
-  tableLoaded <- liftWithIndex deleteTableLoadedStateIdx
-                               (return . isJust :: Maybe Table -> StateT Stateless IO Bool)
-                               table
-  done <- if_ tableLoaded
-              (do
-                serializedTable <- lift2WithIndex deleteSerializeTableStateIdx
-                                                  (\k t -> (serializeTable . HM.delete k . fromJust) t)
-                                                  key table
-                compressedTable <- liftWithIndex deleteCompressTableStateIdx compressTable serializedTable
-                encryptedTable <- liftWithIndex deleteEncryptTableStateIdx encryptTable compressedTable
-                lift3WithIndex deleteStoreTableStateIdx storeTable db tableId encryptedTable)
-              (sfConst' ())
-  liftWithIndex deleteComposeResultStateIdx
-                (const (return $ KVResponse DELETE (Just HM.empty) Nothing Nothing) :: () -> StateT Stateless IO KVResponse)
-                done
+writeback :: (DB.DB_Iface db, Typeable db) => Var KVStore -> Var db -> Var (Set.HashSet T.Text) -> ASTM [Dynamic] (Var [()])
+writeback store db touched = do
+  touchedList <- liftWithIndex writebackTouchedListIdx (pureUnitSf . Set.toList) touched
+  smap
+    (\t -> do
+        table <- lift2WithIndex writebackGetTableIdx (\t store' -> pureUnitSf $ store' HM.! t) t store
+        preparedTable <- prepareTable writebackSerializeTableStateIdx writebackCompressTableStateIdx writebackEncryptTableStateIdx table
+        lift3WithIndex writebackStoreTableStateIdx storeTable db t preparedTable
+        )
+    touchedList
 
 
 serve :: (DB.DB_Iface a, Typeable a)
       => Var KVStore -> Var a -> Var KVRequest -> ASTM [Dynamic] (Var KVResponse)
 -- serve cache db (KVRequest op tableId key fields recordCount values) = do
-serve cache db req = do
+serve cache db req
   -- does destructuring work?
-  op <- liftWithIndex serveDestOpStateIdx
-                      (return . kVRequest_op :: KVRequest -> StateT Stateless IO Operation)
-                      req
-  tableId <- liftWithIndex serveDestTableStateIdx
-                      (return . kVRequest_table :: KVRequest -> StateT Stateless IO T.Text)
-                      req
-  key <- liftWithIndex serveDestKeyStateIdx
-                      (return . kVRequest_key :: KVRequest -> StateT () IO T.Text)
-                      req
-  fields <- liftWithIndex serveDestFieldsStateIdx
-                      (return . kVRequest_fields :: KVRequest -> StateT Stateless IO (Maybe (Set.HashSet T.Text)))
-                      req
-  recordCount <- liftWithIndex serveDestRecordCountStateIdx
-                      (return . kVRequest_recordCount :: KVRequest -> StateT Stateless IO (Maybe Int32))
-                      req
-  values <- liftWithIndex serveDestValuesStateIdx
-                      (return . kVRequest_values :: KVRequest -> StateT Stateless IO (Maybe (HM.HashMap T.Text T.Text)))
-                      req
-  isRead <- liftWithIndex serveIsReadStateIdx (compare READ) op
-  if_ isRead
-      (lift4WithIndex rEADReqHandlingStateIdx read_ cache tableId key fields)
-      (do
-        isScan <- liftWithIndex serveIsScanStateIdx (compare SCAN) op
-        if_ isScan
-          (lift4WithIndex sCANReqHandlingStateIdx scan cache tableId key recordCount)
-          (do
-            isUpdate <- liftWithIndex serveIsUpdateStateIdx (compare UPDATE) op
-            if_ isUpdate
-                (update cache db tableId key values)
-                (do
-                  isInsert <- liftWithIndex serveIsInsertStateIdx (compare INSERT) op
-                  if_ isInsert
-                      (insert cache db tableId key values)
-                      (delete cache db tableId key)
-                  )
-            )
-        )
-    where
-      compare :: Operation -> Operation -> StateT Stateless IO Bool
-      compare op = return . (op ==)
+ = do
+    op <-
+        liftWithIndex
+            serveDestOpStateIdx
+            (return . kVRequest_op :: KVRequest -> StateT Stateless IO Operation)
+            req
+    tableId <-
+        liftWithIndex
+            serveDestTableStateIdx
+            (return . kVRequest_table :: KVRequest -> StateT Stateless IO T.Text)
+            req
+    key <-
+        liftWithIndex
+            serveDestKeyStateIdx
+            (return . kVRequest_key :: KVRequest -> StateT () IO T.Text)
+            req
+    fields <-
+        liftWithIndex
+            serveDestFieldsStateIdx
+            (return . kVRequest_fields :: KVRequest -> StateT Stateless IO (Maybe (Set.HashSet T.Text)))
+            req
+    recordCount <-
+        liftWithIndex
+            serveDestRecordCountStateIdx
+            (return . kVRequest_recordCount :: KVRequest -> StateT Stateless IO (Maybe Int32))
+            req
+    values <-
+        liftWithIndex
+            serveDestValuesStateIdx
+            (return . kVRequest_values :: KVRequest -> StateT Stateless IO (Maybe (HM.HashMap T.Text T.Text)))
+            req
+    isRead <- liftWithIndex serveIsReadStateIdx (compare READ) op
+    if_ isRead
+        (lift4WithIndex rEADReqHandlingStateIdx read_ cache tableId key fields)
+        (do isScan <- liftWithIndex serveIsScanStateIdx (compare SCAN) op
+            if_
+                isScan
+                (lift4WithIndex
+                     sCANReqHandlingStateIdx
+                     scan
+                     cache
+                     tableId
+                     key
+                     recordCount)
+                (do isUpdate <-
+                        liftWithIndex serveIsUpdateStateIdx (compare UPDATE) op
+                    if_
+                        isUpdate
+                        (stdResponse UPDATE)
+                        (do isInsert <-
+                                liftWithIndex
+                                    serveIsInsertStateIdx
+                                    (compare INSERT)
+                                    op
+                            if_
+                                isInsert
+                                (stdResponse INSERT)
+                                (stdResponse DELETE))))
+  where
+    stdResponse ty =
+        sfConst
+            (KVResponse ty (Just mempty) Nothing Nothing :: KVResponse)
+    compare :: Operation -> Operation -> StateT Stateless IO Bool
+    compare op = return . (op ==)

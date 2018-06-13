@@ -79,7 +79,6 @@ refresh reqs = do
 
   update_ newEntriesFromReads
   update_ newEntriesFromWrites
-  mapM_ mergeINSERTIntoCache $ findInserts reqs
 
   -- (\x -> traceM $ "updated cache: " ++ show (getKvs x)) =<< get
   where
