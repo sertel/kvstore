@@ -323,7 +323,7 @@ scalability name conf = do
                       -- r <- runMultipleBatches 20 20 1
                  return $ res ++ [r])
             [] $
-        [maxThreadCount conf]
+        [1 .. maxThreadCount conf]
         --take (maxThreadCount conf) [1,2 ..]
     return (name, results)
 
@@ -353,12 +353,12 @@ data BenchmarkConfig = BenchmarkConfig
 
 benchmarkOptionsParser =
     BenchmarkConfig <$>
-    (read <$>
-     strOption
+    (
+     option auto
          (short 't' <> long "num-threads" <> metavar "NUM_THREADS" <>
           help "Maximum number of threads." <>
           showDefault <>
-          value "8")) <*>
+          value 8)) <*>
     switch (long "with-encryption" <> help "Encrypt requests") <*>
     many
         (option
