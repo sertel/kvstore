@@ -17,7 +17,6 @@ import           Control.DeepSeq
 
 import           Debug.Trace
 
-instance DS.NFData Operation
 instance DS.NFData KVResponse
 
 instance NFData Serialization where

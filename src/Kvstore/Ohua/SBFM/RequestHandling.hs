@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy    as BS
 import           Data.Maybe
 import           Control.Monad.State
 import           Control.Monad.IO.Class
+import Control.DeepSeq
 
 import           KeyValueStore_Iface
 import           Kvservice_Types
@@ -41,8 +42,13 @@ prepareTable serializeTableStateIdx compressTableStateIdx encryptTableStateIdx t
     liftWithIndex encryptTableStateIdx encryptTable compressedTable
         -- _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
 
-pureUnitSf :: a -> StateT () IO a
-pureUnitSf = pure
+pure' :: (Applicative m, NFData a) => a -> m a
+pure' a = a `deepseq` pure a
+
+pureUnitSf :: NFData a => a -> StateT () IO a
+pureUnitSf = pure'
+pureUnitSfLazy :: a -> StateT () IO a
+pureUnitSfLazy = pure
 
 writeback :: (DB.DB_Iface db, Typeable db) => Var KVStore -> Var db -> Var (Set.HashSet T.Text) -> ASTM [Dynamic] (Var [()])
 writeback store db touched = do
@@ -65,32 +71,32 @@ serve cache db req
     op <-
         liftWithIndex
             serveDestOpStateIdx
-            (return . kVRequest_op :: KVRequest -> StateT Stateless IO Operation)
+            (pure' . kVRequest_op :: KVRequest -> StateT Stateless IO Operation)
             req
     tableId <-
         liftWithIndex
             serveDestTableStateIdx
-            (return . kVRequest_table :: KVRequest -> StateT Stateless IO T.Text)
+            (pure' . kVRequest_table :: KVRequest -> StateT Stateless IO T.Text)
             req
     key <-
         liftWithIndex
             serveDestKeyStateIdx
-            (return . kVRequest_key :: KVRequest -> StateT () IO T.Text)
+            (pure' . kVRequest_key :: KVRequest -> StateT Stateless IO T.Text)
             req
     fields <-
         liftWithIndex
             serveDestFieldsStateIdx
-            (return . kVRequest_fields :: KVRequest -> StateT Stateless IO (Maybe (Set.HashSet T.Text)))
+            (pure' . kVRequest_fields :: KVRequest -> StateT Stateless IO (Maybe (Set.HashSet T.Text)))
             req
     recordCount <-
         liftWithIndex
             serveDestRecordCountStateIdx
-            (return . kVRequest_recordCount :: KVRequest -> StateT Stateless IO (Maybe Int32))
+            (pure' . kVRequest_recordCount :: KVRequest -> StateT Stateless IO (Maybe Int32))
             req
     values <-
         liftWithIndex
             serveDestValuesStateIdx
-            (return . kVRequest_values :: KVRequest -> StateT Stateless IO (Maybe (HM.HashMap T.Text T.Text)))
+            (pure'. kVRequest_values :: KVRequest -> StateT Stateless IO (Maybe (HM.HashMap T.Text T.Text)))
             req
     isRead <- liftWithIndex serveIsReadStateIdx (compare READ) op
     if_ isRead
@@ -124,4 +130,4 @@ serve cache db req
         sfConst
             (KVResponse ty (Just mempty) Nothing Nothing :: KVResponse)
     compare :: Operation -> Operation -> StateT Stateless IO Bool
-    compare op = return . (op ==)
+    compare op = pure' . (op ==)

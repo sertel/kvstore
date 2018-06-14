@@ -11,6 +11,7 @@ import qualified Data.HashMap.Strict    as Map
 import           Data.IORef
 
 import qualified DB_Iface               as DB
+import Kvservice_Types (KVRequest, Operation)
 
 import           Control.DeepSeq
 import           Control.Lens
@@ -80,3 +81,6 @@ data KVSState a = KVSState
 makeLenses ''KVSState
 
 newtype KVSHandler a = KVSHandler (IORef (KVSState a))
+
+instance NFData KVRequest
+instance NFData Operation

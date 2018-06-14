@@ -48,7 +48,7 @@ execRequestsOhua cache db reqs
     genReq <-
         liftWithIndex
             reqGeneratorStateIdx
-            ((\r -> return [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
+            ((\r -> pure [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
             reqs
     newEntries <- smap (CF.loadCacheEntry cache db) genReq
     cache' <-
@@ -87,7 +87,7 @@ execRequestsOhua cache db reqs
                        (RH.pureUnitSf . snd)
                        foldRes
                u <- RH.writeback enrichedCache db touched
-               lift2WithIndex seqDBIndex (\db _ -> RH.pureUnitSf db) db u
+               lift2WithIndex seqDBIndex (\db _ -> RH.pureUnitSfLazy db) db u
     responses <- smap (RH.serve cache' db) listReq
     cache''' <-
         lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache' reqs
