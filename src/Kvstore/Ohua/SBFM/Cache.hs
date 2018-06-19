@@ -28,7 +28,8 @@ import           Kvstore.Ohua.KVSTypes
 import           Kvstore.Ohua.SBFM.KVSTypes
 import           Kvstore.Ohua.Cache
 
--- algo
+
+  -- algo
 prepareCacheEntry :: Var T.Text -> Var (Maybe BS.ByteString) -> ASTM [Dynamic] (Var (Maybe (T.Text, Table)))
 prepareCacheEntry tableId serializedValTable = do
   decrypted <- liftWithIndex decryptTableStateIdx (decryptTableSF . fromJust) serializedValTable
