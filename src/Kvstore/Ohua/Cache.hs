@@ -21,7 +21,7 @@ import           Debug.Trace
 
 
 useStrictness :: Bool
-useStrictness = True
+useStrictness = False
 
 forceA :: (Applicative f, NFData a) => a -> f a
 forceA a = a `deepseq` pure a

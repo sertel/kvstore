@@ -42,6 +42,13 @@ import Statistics.Sample (mean)
 import Debug.Trace
 import Text.Printf
 
+
+forceA :: (NFData a, Applicative f) => a -> f a
+forceA a = a `deepseq` pure a
+
+forceA_ :: (NFData a, Applicative f) => a -> f ()
+forceA_ a = a `deepseq` pure ()
+
 instance RandomGen Void where
   next g = (absurd g, g)
   split g = (g, g)
@@ -242,21 +249,22 @@ reqBenchmarkState keyCount =
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 
 -- then run some requests
--- runRequests :: (?execRequests :: ExecReqFn)
---             => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
-runRequests operationCount keyCount bmState s = do
+runRequests :: (?execRequests :: ExecReqFn)
+            => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
+runRequests operationCount _ bmState s = do
     (requests, _) <- runStateT (workload operationCount) bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
+    forceA_ requests
     start <- currentTimeMillis
-    (responses, s') <- requests `seq` flip runStateT s $ ?execRequests requests
+    (responses, s') <- flip runStateT s $ ?execRequests requests
+    forceA_ responses
     stop <- currentTimeMillis
     let execTime = stop - start
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) responses
-    responses `seq`
-        assertEqual "wrong number of responses" operationCount $
+    assertEqual "wrong number of responses" operationCount $
         length responses
     return (s', execTime)
 
