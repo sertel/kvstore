@@ -323,7 +323,7 @@ scalability name conf = do
                       -- r <- runMultipleBatches 20 20 1
                  return $ res ++ [r])
             [] $
-        [maxThreadCount conf]
+        [1 .. maxThreadCount conf]
         --take (maxThreadCount conf) [1,2 ..]
     return (name, results)
 
