@@ -15,6 +15,7 @@ import Control.Monad
 import Control.Monad.State
 import System.Random
 import Data.Void
+import Control.DeepSeq
 
 import GHC.Conc.Sync (setNumCapabilities)
 
@@ -211,7 +212,7 @@ defaultBenchmarkState =
         { _fieldCount = 10
         , _fieldSelection = RangeGen 0 10 $ mkStdGen 0
         , _valueSizeGen = RangeGen 5 10 $ mkStdGen 0
-        , _tableCount = 1
+        , _tableCount = 20
         , _tableSelection = RangeGen 1 1 $ mkStdGen 0
         , _keySelection = LinearGen 1
         , _operationSelection = undefined
@@ -220,13 +221,13 @@ defaultBenchmarkState =
         }
   -- traceM "requ
 
-loadDB useEncryption keyCount = do
+loadDB useEncryption tableCount keyCount = do
     s <- initState useEncryption
   -- fill the db first
-    (requests, _) <-
-        runStateT (workload keyCount) $
+    requests <- fmap V.concat $ forM [0..tableCount - 1] $ \i ->
+        evalStateT (workload keyCount) $
         (defaultBenchmarkState
-            { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
+            { _operationSelection = RangeGen i i $ mkStdGen 0 -- (INSERT only)
             } )
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
@@ -268,11 +269,14 @@ runRequests operationCount _ bmState s = do
         length responses
     return (s', execTime)
 
+defaultTableCount = 20
+
+
 runSingleBatch :: (?execRequests :: ExecReqFn) => BatchConfig -> IO ()
-runSingleBatch BatchConfig{keyCount, requestCount, batchUseEncryption} = do
+runSingleBatch BatchConfig{keyCount, batchSize, batchUseEncryption} = do
     (_, execTime) <-
-        runRequests requestCount keyCount (reqBenchmarkState keyCount) =<<
-        loadDB batchUseEncryption keyCount
+        runRequests batchSize keyCount (reqBenchmarkState keyCount) { _tableCount = defaultTableCount } =<<
+        loadDB batchUseEncryption defaultTableCount keyCount
     traceM $ "exec time: " ++ show execTime
     return ()
 
@@ -280,18 +284,18 @@ runMultipleBatches ::
        (?execRequests :: ExecReqFn) => BatchConfig -> IO Double
 runMultipleBatches BatchConfig { batchUseEncryption = useEncryption
                                , keyCount
-                               , requestCount
+                               , batchCount
                                , batchSize
                                } = do
-    s <- loadDB useEncryption keyCount
+    s <- loadDB useEncryption defaultTableCount keyCount
     let bmState = reqBenchmarkState keyCount
     (_, execTimes) <-
         foldM
             (\(st, execTimes) _ -> do
-                 (st', execTime) <- runRequests requestCount keyCount bmState st
+                 (st', execTime) <- runRequests batchSize keyCount bmState st
                  return $ st' `seq` (st', execTimes ++ [execTime]))
             (s, []) $
-        take batchSize [1 ..]
+        take batchCount [1 ..]
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
@@ -304,7 +308,7 @@ runMultipleBatches_ conf =
 
 data BatchConfig = BatchConfig
   { keyCount :: Int
-  , requestCount :: Int
+  , batchCount :: Int
   , batchSize :: Int
   , batchUseEncryption :: Bool
   }
@@ -323,9 +327,9 @@ scalability name conf = do
                  r <-
                      runMultipleBatches
                          BatchConfig
-                             { keyCount = 2000
-                             , requestCount = 30
-                             , batchSize = 20
+                             { keyCount = 100 -- was 2000
+                             , batchCount = 30
+                             , batchSize = 30
                              , batchUseEncryption = useEncryption conf
                              }
                       -- r <- runMultipleBatches 20 20 1
