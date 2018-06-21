@@ -11,6 +11,7 @@ import Test.Framework.Providers.HUnit
 import Test.HUnit hiding (State)
 
 import Control.Lens
+import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
 import System.Random
