@@ -222,14 +222,15 @@ defaultBenchmarkState =
         }
   -- traceM "requ
 
-loadDB useEncryption tableCount keyCount = do
+loadDB useEncryption tc keyCount = do
     s <- initState useEncryption
   -- fill the db first
-    requests <- fmap V.concat $ forM [0..tableCount - 1] $ \i ->
-        evalStateT (workload keyCount) $
-        (defaultBenchmarkState
-            { _operationSelection = RangeGen i i $ mkStdGen 0 -- (INSERT only)
-            } )
+    requests <- fmap V.concat $ forM [0..tc - 1] $ \i ->
+        evalStateT (workload keyCount)
+        defaultBenchmarkState
+            { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
+            , _tableSelection = RangeGen i i $ mkStdGen 0
+            }
   -- traceM "requests (INSERT):"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-
