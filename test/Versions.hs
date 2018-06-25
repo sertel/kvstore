@@ -1,4 +1,4 @@
-
+{-# LANGUAGE LambdaCase #-}
 module Versions where
 
 import qualified Kvstore.KeyValueService            as KVS
@@ -6,12 +6,20 @@ import qualified Kvstore.Ohua.FBM.KeyValueService   as KVSOhuaFBM
 import qualified Kvstore.Ohua.SBFM.KeyValueService  as KVSOhuaSBFM
 import           Requests
 
-versions :: [(ExecReqFn, String)]
-versions =
-     [ (KVS.execRequestsCoarse, "coarse-grained imperative")
-     , (KVS.execRequestsFine, "fine-grained imperative")
-     , (KVS.execRequestsFuncImp, "functional-imperative")
-     , (KVS.execRequestsFunctional, "purely functional")
-     , (KVSOhuaFBM.execRequestsFunctional, "ohua - FBM")
-    , (KVSOhuaSBFM.execRequestsFunctional, "ohua - SBFM")
-     ]
+data Version
+  = Imperative_coarseGrained
+  | Imperative_fineGrained
+  | Imperative_functional
+  | Functional
+  | Ohua_FBM
+  | Ohua_SBFM
+  deriving (Enum, Bounded)
+
+execFn :: Version -> ExecReqFn
+execFn = \case
+  Imperative_coarseGrained -> KVS.execRequestsCoarse
+  Imperative_fineGrained -> KVS.execRequestsFine
+  Imperative_functional -> KVS.execRequestsFuncImp
+  Functional -> KVS.execRequestsFunctional
+  Ohua_FBM -> KVSOhuaFBM.execRequestsFunctional
+  Ohua_SBFM -> KVSOhuaSBFM.execRequestsFunctional

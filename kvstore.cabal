@@ -99,8 +99,7 @@ test-suite kvstore-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             KvserviceTest.hs
-  other-modules:       Microbenchmark
-                     , ServiceConfig
+  other-modules:       ServiceConfig
                      , Requests
                      , CorrectnessTests
                      , Versions
@@ -128,6 +127,34 @@ test-suite kvstore-test
   -- ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-ds -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
   default-language:    Haskell2010
+
+executable microbench
+  main-is: Microbenchmark.hs
+  hs-source-dirs: test
+  ghc-options: -threaded -rtsopts
+  default-language: Haskell2010
+  build-depends:   base
+                 , kvstore
+                 , aeson
+                 , bytestring
+                 , lens
+                 , time
+                 , statistics
+                 , text
+                 , cryptonite
+                 , zlib
+                 , deepseq
+                 , unordered-containers
+                 , memory
+                 , mtl
+                 , vector
+                 , random
+  other-modules:   Crypto
+                 , MBConfig
+                 , Requests
+                 , ServiceConfig
+                 , Versions
+
 
 
 source-repository head

@@ -17,25 +17,6 @@ import           Control.DeepSeq
 
 import           Debug.Trace
 
-instance DS.NFData KVResponse
-
-instance NFData Serialization where
-  rnf (Serialization _ st) = rnf st
-
-instance NFData Deserialization where
-  rnf (Deserialization _ st) = rnf st
-
-instance NFData Encryption where
-  rnf (Encryption _ st) = rnf st
-
-instance NFData Decryption where
-  rnf (Decryption _ st) = rnf st
-
-instance NFData Compression where
-  rnf (Compression _ st) = rnf st
-
-instance NFData Decompression where
-  rnf (Decompression _ st) = rnf st
 
 --
 -- Global State definition

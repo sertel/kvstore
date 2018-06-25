@@ -2,13 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns #-}
-
-module Microbenchmark where
-
-import Test.Framework
-import Test.Framework.Providers.HUnit
-import Test.HUnit hiding (State)
+{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings #-}
 
 import Control.Lens
 import Control.DeepSeq
@@ -17,11 +11,15 @@ import Control.Monad.State
 import System.Random
 import Data.Void
 import Control.DeepSeq
+import System.Exit
+import System.IO
+import System.Mem
 
 import GHC.Conc.Sync (setNumCapabilities)
 
 import Data.Aeson as AE
-import Data.ByteString.Lazy as BS (writeFile)
+import Data.Aeson.TH as AE
+import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as Set
 import Data.IORef
@@ -35,15 +33,12 @@ import Kvstore.Serialization
 import Requests
 import ServiceConfig
 import Versions
-
-import Data.Semigroup ((<>))
-import Options.Applicative
+import MBConfig
 
 import Statistics.Sample (mean)
 
 import Debug.Trace
 import Text.Printf
-
 
 forceA :: (NFData a, Applicative f) => a -> f a
 forceA a = a `deepseq` pure a
@@ -235,165 +230,73 @@ loadDB useEncryption tc keyCount = do
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-
         flip runStateT s $ ?execRequests requests
-    responses `seq`
-        assertEqual "wrong number of responses" keyCount $ length responses
   -- adjust minLatency for benchmark requests
     return s' {_storage = MockDB db 20000}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
 
-reqBenchmarkState keyCount =
+reqBenchmarkState keyCount numTables =
     defaultBenchmarkState
         { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
         , _operationSelection = RangeGen 0 4 $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+        , _tableCount = numTables
+        , _tableSelection = RangeGen 0 numTables $ mkStdGen 0
         }
 
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 
 -- then run some requests
-runRequests :: (?execRequests :: ExecReqFn)
-            => Int -> Int -> BenchmarkState RangeGen -> KVSState MockDB -> IO (KVSState MockDB, Integer)
-runRequests operationCount _ bmState s = do
-    (requests, _) <- runStateT (workload operationCount) bmState
+runRequests ::
+       (?execRequests :: ExecReqFn)
+    => Int
+    -> Int
+    -> BenchmarkState RangeGen
+    -> StateT (KVSState MockDB) IO Integer
+runRequests operationCount _ bmState = do
+    (requests, _) <- liftIO $ runStateT (workload operationCount) bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     forceA_ requests
-    start <- currentTimeMillis
-    (responses, s') <- flip runStateT s $ ?execRequests requests
+    liftIO performGC
+    start <- liftIO currentTimeMillis
+    responses <- ?execRequests requests
     forceA_ responses
-    stop <- currentTimeMillis
+    --() <- join $ gets forceA_ -- forces the state
+    stop <- liftIO currentTimeMillis
     let execTime = stop - start
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
-  -- mapM (\i -> traceM $ show i ++ "\n" ) responses
-    assertEqual "wrong number of responses" operationCount $
-        length responses
-    return (s', execTime)
+  -- mapM (\i -> traceM $ show i ++ "\n" a) responses
+    unless (operationCount == length responses) $ liftIO $
+      error "wrong number of responses"
+    return execTime
 
 defaultTableCount = 20
 
 
-runSingleBatch :: (?execRequests :: ExecReqFn) => BatchConfig -> IO ()
-runSingleBatch BatchConfig{keyCount, batchSize, batchUseEncryption} = do
-    (_, execTime) <-
-        runRequests batchSize keyCount (reqBenchmarkState keyCount) { _tableCount = defaultTableCount } =<<
-        loadDB batchUseEncryption defaultTableCount keyCount
-    traceM $ "exec time: " ++ show execTime
-    return ()
-
 runMultipleBatches ::
        (?execRequests :: ExecReqFn) => BatchConfig -> IO Double
-runMultipleBatches BatchConfig { batchUseEncryption = useEncryption
+runMultipleBatches BatchConfig { useEncryption = useEncryption
                                , keyCount
                                , batchCount
                                , batchSize
+                               , numTables
                                } = do
-    s <- loadDB useEncryption defaultTableCount keyCount
-    let bmState = reqBenchmarkState keyCount
-    (_, execTimes) <-
-        foldM
-            (\(st, execTimes) _ -> do
-                 (st', execTime) <- runRequests batchSize keyCount bmState st
-                 return $ st' `seq` (st', execTimes ++ [execTime]))
-            (s, []) $
-        take batchCount [1 ..]
+    s <- loadDB useEncryption numTables keyCount
+    let bmState = reqBenchmarkState keyCount numTables
+    execTimes <-
+        flip evalStateT s $
+        sequence $ replicate batchCount (runRequests batchSize keyCount bmState)
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
 
-runMultipleBatches_ ::
-       (?execRequests :: ExecReqFn) => BatchConfig -> IO ()
-runMultipleBatches_ conf =
-    (\e -> traceM $ "mean execution time: " ++ show e ++ " ms") =<<
-    runMultipleBatches conf
-
-data BatchConfig = BatchConfig
-  { keyCount :: Int
-  , batchCount :: Int
-  , batchSize :: Int
-  , batchUseEncryption :: Bool
-  }
-
-data ScalabilityResult = ScalabilityResult
-    { version :: String
-    , results :: [Double]
-    }
-
-scalability name conf = do
-    results <-
-        foldM
-            (\res n -> do
-                 _ <- setNumCapabilities n
-                      -- r <- runMultipleBatches 2000 20 20
-                 r <-
-                     runMultipleBatches
-                         BatchConfig
-                             { keyCount = 100 -- was 2000
-                             , batchCount = 30
-                             , batchSize = 30
-                             , batchUseEncryption = useEncryption conf
-                             }
-                      -- r <- runMultipleBatches 20 20 1
-                 return $ res ++ [r])
-            [] $
-        [1 .. maxThreadCount conf]
-        --take (maxThreadCount conf) [1,2 ..]
-    return (name, results)
-
-buildSuite conf = [testCase "Done!" $ runAsSingleTest conf]
-
-defaultOutputFile = "scalability.json"
-
-runAsSingleTest conf = do
-    results <-
-        forM (filter isSelected versions) $ \(version, name) ->
-            let ?execRequests = version
-             in scalability name conf
-    BS.writeFile (outputFile conf) $ AE.encode $ HM.fromList results
-    where
-      selected = selectedVersions conf
-      isSelected | null selected = const True
-                 | otherwise = (`elem` selected) . snd
-
-
-data BenchmarkConfig = BenchmarkConfig
-    { maxThreadCount :: Int
-    , useEncryption :: Bool
-    , selectedVersions :: [String]
-    , singleTestOnly :: Bool
-    , outputFile :: FilePath
-    }
-
-benchmarkOptionsParser =
-    BenchmarkConfig <$>
-    (
-     option auto
-         (short 't' <> long "num-threads" <> metavar "NUM_THREADS" <>
-          help "Maximum number of threads." <>
-          showDefault <>
-          value 8)) <*>
-    switch (long "with-encryption" <> help "Encrypt requests") <*>
-    many
-        (option
-             (eitherReader $ \str ->
-                  if str `elem` versionNames
-                      then pure str
-                      else Left $
-                           printf
-                               "Unknown version '%v'. Allowed values are %v"
-                               str $
-                           intercalate "," $ map (printf "'%s'") versionNames)
-             (short 's' <> long "select" <>
-              help
-                  "Select only specific implementation versions (can be supplied multiple times, default all)" <>
-              completeWith versionNames)) <*>
-    switch
-        (long "single-test-only" <> help "only run test for full set of cores") <*>
-    strOption
-        (long "output" <> short 'o' <>
-         help "Output file to write the results to" <>
-         value defaultOutputFile <>
-         showDefault)
-  where
-    versionNames = map snd versions
+main :: IO ()
+main = do
+    conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
+    setNumCapabilities $ threadCount conf
+    BS.putStr .
+        AE.encode =<<
+        let ?execRequests = execFn (systemVersion conf)
+         in runMultipleBatches conf

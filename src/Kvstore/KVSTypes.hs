@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE StandaloneDeriving, DeriveGeneric #-}
 
 module Kvstore.KVSTypes where
 
@@ -11,7 +11,8 @@ import qualified Data.HashMap.Strict    as Map
 import           Data.IORef
 
 import qualified DB_Iface               as DB
-import Kvservice_Types (KVRequest, Operation)
+import Kvservice_Types (KVRequest, Operation, KVResponse)
+import GHC.Generics
 
 import           Control.DeepSeq
 import           Control.Lens
@@ -84,3 +85,23 @@ newtype KVSHandler a = KVSHandler (IORef (KVSState a))
 
 instance NFData KVRequest
 instance NFData Operation
+--instance NFData a => NFData (KVSState a)
+instance NFData KVResponse
+
+instance NFData Serialization where
+  rnf (Serialization _ st) = rnf st
+
+instance NFData Deserialization where
+  rnf (Deserialization _ st) = rnf st
+
+instance NFData Encryption where
+  rnf (Encryption _ st) = rnf st
+
+instance NFData Decryption where
+  rnf (Decryption _ st) = rnf st
+
+instance NFData Compression where
+  rnf (Compression _ st) = rnf st
+
+instance NFData Decompression where
+  rnf (Decompression _ st) = rnf st

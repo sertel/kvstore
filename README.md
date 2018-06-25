@@ -21,11 +21,32 @@ thrift -r --gen hs db.thrift
 Correctness Tests:
 ```
 stack test
-stack test --ta=-sct
-stack test --ta=-suite=ct
+stack test
+stack test
 ```
 
 Micro Benchmark (need to/should be executed sequentially):
+
+Reads a JSON config from stdin, writes results to stdout (also json)
 ```
-stack test --ta="-smb -eseq"
+stack exec -- microbench
+```
+
+The easiest way to generate configs is using Haskell, creating `BatchConfig`
+values (in `test/MBConfig.hs`) and serializing them using `Aeson.encode`.
+The format for the config is the `BatchConfig` fields with camel case replaced
+with snake case.
+
+Example:
+
+```json
+{
+  "key_count": 100,
+  "batch_count": 30,
+  "batch_size": 30,
+  "use_encryption": true,
+  "num_tables": 20,
+  "thread_count": 8,
+  "systemVersion": "Imperative_coarseGrained"
+}
 ```
