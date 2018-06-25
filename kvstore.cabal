@@ -33,6 +33,8 @@ library
                      , DB_Iface
                      , Db_Types
                      , Kvstore.InputOutput
+                     , MBConfig
+                     , Versions
   other-modules:       KeyValueStore_Client
                      , Kvstore.Ohua.RequestHandling
                      , Kvstore.Ohua.FBM.RequestHandling
@@ -102,7 +104,6 @@ test-suite kvstore-test
   other-modules:       ServiceConfig
                      , Requests
                      , CorrectnessTests
-                     , Versions
                      , Crypto
   build-depends:       base
                      , kvstore
@@ -150,10 +151,8 @@ executable microbench
                  , vector
                  , random
   other-modules:   Crypto
-                 , MBConfig
                  , Requests
                  , ServiceConfig
-                 , Versions
 
 
 

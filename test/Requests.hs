@@ -13,8 +13,9 @@ import           Kvstore.KVSTypes
 import           Kvservice_Types
 
 import           ServiceConfig
+import Versions
 
-type ExecReqFn = V.Vector KVRequest -> StateT (KVSState MockDB) IO (V.Vector KVResponse)
+type ExecReqFn = ExecReqFn_ MockDB
 
 packFieldsAndValues = Just . HM.fromList . map (\(k,v) -> (T.pack k, T.pack v)) . HM.toList
 packFields = Just . Set.fromList . map T.pack . Set.toList

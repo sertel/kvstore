@@ -301,24 +301,16 @@ confs =
                 , threadCount = c
                 , systemVersion = v
                 }
-  | c <- [0..8]
-  , v <- [minBound..maxBound]
+  | c <- [1..8]
+  , v <- [Functional, Ohua_FBM, Ohua_SBFM]
   ]
 
 outputFile = "100keys-20tables.json"
 
 main :: IO ()
-main = BS.writeFile outputFile . AE.encode =<< mapM runExp confs
-  where
-    runExp conf = do
-        setNumCapabilities (threadCount conf)
-        res <-
-            let ?execRequests = execFn $ systemVersion conf
-             in runMultipleBatches conf
-        pure (conf, res)
-    -- conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
-    -- setNumCapabilities $ threadCount conf
-    -- BS.putStr .
-    --     AE.encode =<<
-    --     let ?execRequests = execFn (systemVersion conf)
-    --      in runMultipleBatches conf
+main = do
+     conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
+     BS.putStr .
+         AE.encode =<<
+         let ?execRequests = execFn (systemVersion conf)
+          in runMultipleBatches conf
