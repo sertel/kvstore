@@ -292,11 +292,33 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
 
+confs =
+  [ BatchConfig { keyCount = 100
+                , batchCount = 30
+                , batchSize = 30
+                , useEncryption = True
+                , numTables = 20
+                , threadCount = c
+                , systemVersion = v
+                }
+  | c <- [0..8]
+  , v <- [minBound..maxBound]
+  ]
+
+outputFile = "100keys-20tables.json"
+
 main :: IO ()
-main = do
-    conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
-    setNumCapabilities $ threadCount conf
-    BS.putStr .
-        AE.encode =<<
-        let ?execRequests = execFn (systemVersion conf)
-         in runMultipleBatches conf
+main = BS.writeFile outputFile . AE.encode =<< mapM runExp confs
+  where
+    runExp conf = do
+        setNumCapabilities (threadCount conf)
+        res <-
+            let ?execRequests = execFn $ systemVersion conf
+             in runMultipleBatches conf
+        pure (conf, res)
+    -- conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
+    -- setNumCapabilities $ threadCount conf
+    -- BS.putStr .
+    --     AE.encode =<<
+    --     let ?execRequests = execFn (systemVersion conf)
+    --      in runMultipleBatches conf
