@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 
 module Kvstore.Ohua.SBFM.KeyValueService where
 
@@ -32,6 +32,10 @@ import qualified Kvstore.Ohua.SBFM.Cache           as CF
 import           Kvstore.Ohua.SBFM.KVSTypes        as SFBMTypes
 import qualified Kvstore.Ohua.SBFM.RequestHandling as RH
 
+import Control.Arrow (first)
+import qualified Data.Map as M
+import System.CPUTime
+
 
 execRequestsOhua ::
        (DB.DB_Iface db, Typeable db)
@@ -46,53 +50,65 @@ execRequestsOhua cache db reqs
   --       to be folded over!
  = do
     genReq <-
-        liftWithIndex
+        liftWithIndexNamed
             reqGeneratorStateIdx
+            "kvstore/req-tables"
             ((\r -> pure [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
             reqs
     newEntries <- smap (CF.loadCacheEntry cache db) genReq
     cache' <-
-        lift2WithIndex foldIntoCacheStateIdx foldIntoCache cache newEntries
+        lift2WithIndexNamed
+            foldIntoCacheStateIdx
+            "kvstore/fold-into-cache"
+            foldIntoCache
+            cache
+            newEntries
   -- cache'' <- lift2WithIndex foldINSERTsIntoCacheStateIdx
   --                          (\c r -> foldINSERTsIntoCache c $ Vector.toList $ Cache.findInserts r)
   --                          cache' reqs
     listReq <-
-        liftWithIndex
+        liftWithIndexNamed
             reqsToListStateIdx
+            "kvstore/reqs-to-list"
             (return . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [KVRequest])
             reqs
     db' <-
         do writeList <-
-               liftWithIndex
+               liftWithIndexNamed
                    getWriteListIdx
+                   "kvstore/filter-writes"
                    (RH.pureUnitSf . Vector.toList . Cache.findWrites)
                    reqs
            noWritesPresent <-
-               liftWithIndex
+               liftWithIndexNamed
                    areWritesPresentIndex
+                   "kvstore/are-writes-present"
                    (RH.pureUnitSf . null)
                    writeList
            if_ noWritesPresent (return db) $ do
                foldRes <-
-                   lift2WithIndex
+                   lift2WithIndexNamed
                        foldWritesIntoCacheIdx
+                       "kvstore/fold-writes-into-cache"
                        (\a b -> RH.pureUnitSf $ foldWritesIntoCache a b)
                        cache'
                        writeList
                touched <-
-                   liftWithIndex getTouchedIdx (RH.pureUnitSf . fst) foldRes
+                   liftWithIndexNamed getTouchedIdx "kvstore/get-touched" (RH.pureUnitSf . fst) foldRes
                enrichedCache <-
-                   liftWithIndex
+                   liftWithIndexNamed
                        getEnrichedStateIdx
+                       "kvstore/get-enriched-cache"
                        (RH.pureUnitSf . snd)
                        foldRes
                u <- RH.writeback enrichedCache db touched
-               lift2WithIndex seqDBIndex (\db _ -> RH.pureUnitSfLazy db) db u
+               lift2WithIndexNamed seqDBIndex "kvstore/seq-db" (\db _ -> RH.pureUnitSfLazy db) db u
     responses <- smap (RH.serve cache' db) listReq
     cache''' <-
-        lift2WithIndex foldEvictFromCacheStateIdx foldEvictFromCache cache' reqs
-    lift3WithIndex
+        lift2WithIndexNamed foldEvictFromCacheStateIdx "kvstore/evict" foldEvictFromCache cache' reqs
+    lift3WithIndexNamed
         finalResultStateIdx
+        "kvstore/compose-result"
         ((\r c d -> return (Vector.fromList r, c, d)) :: [KVResponse] -> KVStore -> db -> StateT Stateless IO ( Vector.Vector KVResponse
                                                                                                               , KVStore
                                                                                                               , db))
@@ -105,7 +121,10 @@ execRequestsFunctional ::
        (DB.DB_Iface db, Typeable db)
     => Vector.Vector KVRequest
     -> StateT (KVSState db) IO (Vector.Vector KVResponse)
-execRequestsFunctional reqs = do
+execRequestsFunctional = fmap fst . execRequestsFunctional0
+
+
+execRequestsFunctional0 reqs = do
     kvsstate@KVSState { _cache = cache_
                       , _storage = db
                       , _serializer = ser
@@ -115,15 +134,17 @@ execRequestsFunctional reqs = do
                       , _encryption = enc
                       , _decryption = dec
                       } <- get
-    (responses, cache'', db'') <-
+    ((responses, cache'', db''), stats) <-
         liftIO $
         runChanM $
-        runOhuaM -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
-            (do c <- sfConst' cache_
-                d <- sfConst' db
-                r <- sfConst' reqs
-                execRequestsOhua c d r) $
-        SFBMTypes.globalState ser deser comp decomp enc dec
+        flip runAlgoWStats (SFBMTypes.globalState ser deser comp decomp enc dec) =<<
+        liftIO
+            (createAlgo
+        -- (execRequestsOhua =<< (sfConst' cache) =<< (sfConst' db) =<< (sfConst' reqs))
+                 (do c <- sfConst' cache_
+                     d <- sfConst' db
+                     r <- sfConst' reqs
+                     execRequestsOhua c d r))
   -- let (ser',deser') = convertState serde' -- TODO
     put kvsstate {_storage = db'', _cache = cache''}
-    return responses
+    return (responses, stats)

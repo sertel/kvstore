@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, OverloadedStrings #-}
 
 module Kvstore.Ohua.SBFM.RequestHandling where
 
@@ -36,10 +36,10 @@ import           Kvstore.Ohua.RequestHandling
 
 prepareTable :: Int -> Int -> Int -> Var Table -> ASTM [Dynamic] (Var BS.ByteString)
 prepareTable serializeTableStateIdx compressTableStateIdx encryptTableStateIdx table = do
-    serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
+    serializedTable <- liftWithIndexNamed serializeTableStateIdx "kvstore/serialize" serializeTable table
     compressedTable <-
-        liftWithIndex compressTableStateIdx compressTable serializedTable
-    liftWithIndex encryptTableStateIdx encryptTable compressedTable
+        liftWithIndexNamed compressTableStateIdx "kvstore/compress" compressTable serializedTable
+    liftWithIndexNamed encryptTableStateIdx "kvstore/encrypt" encryptTable compressedTable
         -- _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
 
 pure' :: (Applicative m, NFData a) => a -> m a
@@ -52,12 +52,12 @@ pureUnitSfLazy = pure
 
 writeback :: (DB.DB_Iface db, Typeable db) => Var KVStore -> Var db -> Var (Set.HashSet T.Text) -> ASTM [Dynamic] (Var [()])
 writeback store db touched = do
-  touchedList <- liftWithIndex writebackTouchedListIdx (pureUnitSf . Set.toList) touched
+  touchedList <- liftWithIndexNamed writebackTouchedListIdx "kvstore/touched-list" (pureUnitSf . Set.toList) touched
   smap
     (\t -> do
-        table <- lift2WithIndex writebackGetTableIdx (\t store' -> pureUnitSf $ store' HM.! t) t store
+        table <- lift2WithIndexNamed writebackGetTableIdx "kvstore/writeback-get-table" (\t store' -> pureUnitSf $ store' HM.! t) t store
         preparedTable <- prepareTable writebackSerializeTableStateIdx writebackCompressTableStateIdx writebackEncryptTableStateIdx table
-        lift3WithIndex writebackStoreTableStateIdx storeTable db t preparedTable
+        lift3WithIndexNamed writebackStoreTableStateIdx "kvstore/store-table" storeTable db t preparedTable
         )
     touchedList
 
@@ -69,56 +69,64 @@ serve cache db req
   -- does destructuring work?
  = do
     op <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestOpStateIdx
+            "kvstore/get-request-op"
             (pure' . kVRequest_op :: KVRequest -> StateT Stateless IO Operation)
             req
     tableId <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestTableStateIdx
+            "kvstore/get-request-table"
             (pure' . kVRequest_table :: KVRequest -> StateT Stateless IO T.Text)
             req
     key <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestKeyStateIdx
+            "kvstore/get-request-key"
             (pure' . kVRequest_key :: KVRequest -> StateT Stateless IO T.Text)
             req
     fields <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestFieldsStateIdx
+            "kvstore/get-request-fields"
             (pure' . kVRequest_fields :: KVRequest -> StateT Stateless IO (Maybe (Set.HashSet T.Text)))
             req
     recordCount <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestRecordCountStateIdx
+            "kvstore/get-request-record-count"
             (pure' . kVRequest_recordCount :: KVRequest -> StateT Stateless IO (Maybe Int32))
             req
     values <-
-        liftWithIndex
+        liftWithIndexNamed
             serveDestValuesStateIdx
+            "kvstore/get-request-values"
             (pure'. kVRequest_values :: KVRequest -> StateT Stateless IO (Maybe (HM.HashMap T.Text T.Text)))
             req
-    isRead <- liftWithIndex serveIsReadStateIdx (compare READ) op
+    isRead <- liftWithIndexNamed serveIsReadStateIdx "kvstore/is-read" (compare READ) op
     if_ isRead
-        (lift4WithIndex rEADReqHandlingStateIdx read_ cache tableId key fields)
-        (do isScan <- liftWithIndex serveIsScanStateIdx (compare SCAN) op
+        (lift4WithIndexNamed rEADReqHandlingStateIdx "kvstore/handle-read" read_ cache tableId key fields)
+        (do isScan <- liftWithIndexNamed serveIsScanStateIdx "kvstore/is-scan" (compare SCAN) op
             if_
                 isScan
-                (lift4WithIndex
+                (lift4WithIndexNamed
                      sCANReqHandlingStateIdx
+                     "kvstore/handle-scan"
                      scan
                      cache
                      tableId
                      key
                      recordCount)
                 (do isUpdate <-
-                        liftWithIndex serveIsUpdateStateIdx (compare UPDATE) op
+                        liftWithIndexNamed serveIsUpdateStateIdx "kvstore/is-update" (compare UPDATE) op
                     if_
                         isUpdate
                         (stdResponse UPDATE)
                         (do isInsert <-
-                                liftWithIndex
+                                liftWithIndexNamed
                                     serveIsInsertStateIdx
+                                    "kvstore/is-insert"
                                     (compare INSERT)
                                     op
                             if_

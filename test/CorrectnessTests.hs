@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, TupleSections, FlexibleContexts #-}
 
 module CorrectnessTests where
 
@@ -15,6 +15,7 @@ import qualified Data.Vector               as V
 import           Data.Maybe
 import           Data.IORef
 import           Control.Monad.State
+import Control.Arrow (first, second)
 import           Debug.Trace
 
 import           Kvstore.Serialization
@@ -25,6 +26,10 @@ import           Kvservice_Types
 import           Requests
 import           ServiceConfig
 import           Versions
+
+import qualified Kvstore.Ohua.SBFM.KeyValueService as KVS
+import Control.Lens
+import qualified Data.Map as Map
 
 initState :: IO (KVSState MockDB)
 initState = do
@@ -160,4 +165,31 @@ suite name = [
              , testCase "multiple inserts in one batch" multipleInserts
              ]
 
-buildSuite = map (\(version, name) -> testGroup name $ let ?execRequests=version in suite name) versions
+testEachAction = do
+  statVar <- newIORef mempty
+  let execWithCollectStats statname reqs = do
+        modify (cache .~ mempty)
+        (res, stats) <- KVS.execRequestsFunctional0 reqs
+        liftIO $ atomicModifyIORef statVar ((,()) . ((statname, stats):))
+        pure res
+  s <- initState
+  flip runStateT s $ do
+    let ?execRequests = execWithCollectStats "insert"
+      in insertEntry "table-0" "key-0" "field-0" "value-0"
+    let ?execRequests = execWithCollectStats "read"
+      in readEntry "table-0" "key-0" "field-0"
+    let ?execRequests = execWithCollectStats "update"
+      in updateEntry "table-0" "key-0" "field-0" "value-1"
+    let ?execRequests = execWithCollectStats "delete"
+      in deleteEntry "table-0" "key-0"
+  stats <- readIORef statVar
+  writeFile "stat-results" (show $ fmap (second (fmap (first show) . Map.toList)) stats)
+
+
+buildSuite = [testCase "test all actions" testEachAction]
+    -- map (\version ->
+    --          testGroup (show version) $
+    --          let ?execRequests = execFn version
+    --           in suite (show version))
+    --     [Ohua_SBFM]
+                                                                                                                                -- [minBound..maxBound]
