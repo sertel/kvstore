@@ -39,7 +39,7 @@ loadTableSF db tableId = liftIO $ evalStateT (withStrictness $ loadTable tableId
 deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
 deserializeTableSF d = do
   deser <- get
-  (r, KVSState{ _deserializer=deser' }) <- liftIO $ runStateT (withStrictness $ deserializeTable d) KVSState{ _deserializer=deser }
+  (r, KVSState{ _deserializer=deser' }) <- liftIO $ runStateT (deserializeTable d) KVSState{ _deserializer=deser }
   put deser'
   return r
 

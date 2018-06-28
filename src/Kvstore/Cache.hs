@@ -66,12 +66,12 @@ updateCache newEntries = (\_ -> return ()) =<< mapM insertTableIntoCache newEntr
 
 refresh :: (DB.DB_Iface a) => Vector.Vector KVRequest -> StateT (KVSState a) IO ()
 refresh reqs = do
-  let reads_ = (Vector.map kVRequest_table . findReads) reqs
+  let reads_ = (HS.toList . HS.fromList . map kVRequest_table . Vector.toList . findReads) reqs
   newEntriesFromReads <- mapM loadCacheEntry reads_
 
   -- we also load the entries for the writes because requests are on the granularity of a table
   -- and the request of the service are on the granularity of the table entries.
-  let writes = (Vector.map kVRequest_table . findWrites) reqs
+  let writes = (HS.toList . HS.fromList . map kVRequest_table . Vector.toList . findWrites) reqs
   newEntriesFromWrites <- mapM loadCacheEntry writes
 
     -- TODO different strategies are possible here
@@ -82,7 +82,7 @@ refresh reqs = do
 
   -- (\x -> traceM $ "updated cache: " ++ show (getKvs x)) =<< get
   where
-    update_ = updateCache . catMaybes . Vector.toList
+    update_ = updateCache . catMaybes
     findNeeded readReqs writeReq =
       let
         writeTableId = kVRequest_table writeReq

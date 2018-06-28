@@ -2,18 +2,21 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns,
+  OverloadedStrings, FlexibleContexts, PartialTypeSignatures #-}
 
 import Control.Lens
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
+import Control.Arrow (first, second)
 import System.Random
 import Data.Void
 import Control.DeepSeq
 import System.Exit
 import System.IO
 import System.Mem
+import System.CPUTime
 
 import GHC.Conc.Sync (setNumCapabilities)
 
@@ -22,6 +25,7 @@ import Data.Aeson.TH as AE
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as Set
+import qualified Data.Map as Map
 import Data.IORef
 import Data.List
 import Data.Time.Clock.POSIX
@@ -29,6 +33,8 @@ import qualified Data.Vector as V
 import Kvservice_Types
 import Kvstore.KVSTypes
 import Kvstore.Serialization
+
+import qualified Kvstore.Ohua.SBFM.KeyValueService as KVS
 
 import Requests
 import ServiceConfig
@@ -39,6 +45,7 @@ import Statistics.Sample (mean)
 
 import Debug.Trace
 import Text.Printf
+
 
 forceA :: (NFData a, Applicative f) => a -> f a
 forceA a = a `deepseq` pure a
@@ -62,8 +69,8 @@ initState useEncryption = do
             HM.empty
             (MockDB db 0) -- latency is 0 for loading the DB and then
                           -- we set it for the requests
-            jsonSer
-            jsonDeSer
+            binarySerialization
+            binaryDeserialization
             zlibComp
             zlibDecomp
             enc
@@ -231,7 +238,7 @@ loadDB useEncryption tc keyCount = do
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-
         flip runStateT s $ ?execRequests requests
   -- adjust minLatency for benchmark requests
-    return s' {_storage = MockDB db 20000}
+    return s' {_storage = MockDB db 50}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
@@ -307,8 +314,50 @@ confs =
 
 outputFile = "100keys-20tables.json"
 
+
+
+testEachAction replications = do
+    results <- sequence $ replicate replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
+    let avg l = sum l `div` toInteger (length l)
+        stats = fmap (fmap avg) (Map.unionsWith (Map.unionWith mappend) $ map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
+    writeFile
+        "stat-results"
+        (show $ fmap (second (fmap (first show) . Map.toList)) $ Map.toList stats)
+  where
+    runTest = do
+        statVar <- newIORef mempty
+        let execWithCollectStats statname reqs = do
+                modify (cache .~ mempty)
+                liftIO performGC
+                (res, stats) <- KVS.execRequestsFunctional0 reqs
+                t0 <- liftIO getCPUTime
+                forceA res
+                t1 <- liftIO getCPUTime
+                let stats' = Map.insert "setup/force-result" (t1 - t0) stats
+                liftIO $
+                    atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
+                pure res
+        s <-
+            let ?execRequests = KVS.execRequestsFunctional
+             in loadDB True 10 100
+        flip runStateT s $ do
+            let ?execRequests = execWithCollectStats "insert"
+             in insertEntry "table-0" "key-0" "field-0" "value-0"
+            let ?execRequests = execWithCollectStats "read"
+             in readEntry "table-0" "key-0" "field-0"
+            let ?execRequests = execWithCollectStats "update"
+             in updateEntry "table-0" "key-0" "field-0" "value-1"
+            let ?execRequests = execWithCollectStats "delete"
+             in deleteEntry "table-0" "key-0"
+        Map.fromList <$> readIORef statVar
+
+
 main :: IO ()
-main = do
+main = benchMain -- testEachAction 10
+
+
+benchMain :: IO ()
+benchMain = do
      conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
      BS.putStr .
          AE.encode =<<

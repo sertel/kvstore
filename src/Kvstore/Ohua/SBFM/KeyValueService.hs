@@ -53,7 +53,8 @@ execRequestsOhua cache db reqs
         liftWithIndexNamed
             reqGeneratorStateIdx
             "kvstore/req-tables"
-            ((\r -> pure [kVRequest_table req | req <- Vector.toList r]) :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
+            (pure .
+             Set.toList . Set.fromList . map kVRequest_table . Vector.toList :: Vector.Vector KVRequest -> StateT Stateless IO [T.Text])
             reqs
     newEntries <- smap (CF.loadCacheEntry cache db) genReq
     cache' <-
@@ -94,7 +95,11 @@ execRequestsOhua cache db reqs
                        cache'
                        writeList
                touched <-
-                   liftWithIndexNamed getTouchedIdx "kvstore/get-touched" (RH.pureUnitSf . fst) foldRes
+                   liftWithIndexNamed
+                       getTouchedIdx
+                       "kvstore/get-touched"
+                       (RH.pureUnitSf . fst)
+                       foldRes
                enrichedCache <-
                    liftWithIndexNamed
                        getEnrichedStateIdx
@@ -102,10 +107,20 @@ execRequestsOhua cache db reqs
                        (RH.pureUnitSf . snd)
                        foldRes
                u <- RH.writeback enrichedCache db touched
-               lift2WithIndexNamed seqDBIndex "kvstore/seq-db" (\db _ -> RH.pureUnitSfLazy db) db u
+               lift2WithIndexNamed
+                   seqDBIndex
+                   "kvstore/seq-db"
+                   (\db _ -> RH.pureUnitSfLazy db)
+                   db
+                   u
     responses <- smap (RH.serve cache' db) listReq
     cache''' <-
-        lift2WithIndexNamed foldEvictFromCacheStateIdx "kvstore/evict" foldEvictFromCache cache' reqs
+        lift2WithIndexNamed
+            foldEvictFromCacheStateIdx
+            "kvstore/evict"
+            foldEvictFromCache
+            cache'
+            reqs
     lift3WithIndexNamed
         finalResultStateIdx
         "kvstore/compose-result"

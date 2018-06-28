@@ -165,31 +165,10 @@ suite name = [
              , testCase "multiple inserts in one batch" multipleInserts
              ]
 
-testEachAction = do
-  statVar <- newIORef mempty
-  let execWithCollectStats statname reqs = do
-        modify (cache .~ mempty)
-        (res, stats) <- KVS.execRequestsFunctional0 reqs
-        liftIO $ atomicModifyIORef statVar ((,()) . ((statname, stats):))
-        pure res
-  s <- initState
-  flip runStateT s $ do
-    let ?execRequests = execWithCollectStats "insert"
-      in insertEntry "table-0" "key-0" "field-0" "value-0"
-    let ?execRequests = execWithCollectStats "read"
-      in readEntry "table-0" "key-0" "field-0"
-    let ?execRequests = execWithCollectStats "update"
-      in updateEntry "table-0" "key-0" "field-0" "value-1"
-    let ?execRequests = execWithCollectStats "delete"
-      in deleteEntry "table-0" "key-0"
-  stats <- readIORef statVar
-  writeFile "stat-results" (show $ fmap (second (fmap (first show) . Map.toList)) stats)
 
-
-buildSuite = [testCase "test all actions" testEachAction]
-    -- map (\version ->
-    --          testGroup (show version) $
-    --          let ?execRequests = execFn version
-    --           in suite (show version))
-    --     [Ohua_SBFM]
-                                                                                                                                -- [minBound..maxBound]
+buildSuite =
+    map (\version ->
+             testGroup (show version) $
+             let ?execRequests = execFn version
+              in suite (show version))
+        [minBound .. maxBound]

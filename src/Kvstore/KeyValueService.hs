@@ -74,7 +74,7 @@ execRequestsFuncImp reqs = do
         runStateT
             (mapM
                  Cache.loadCacheEntry
-                 [kVRequest_table req | req <- Vector.toList reqs])
+                 (Set.toList $ Set.fromList $ map kVRequest_table $ Vector.toList reqs))
             s0
   -- mapM here actually folds over the cache! (mapM is a sequential 'for-loop' over the state by definition!)
     s2@(KVSState {_cache = cache'}) <-
@@ -136,7 +136,7 @@ execRequestsFunctional reqs
         runStateT
             (mapM
                  Cache.loadCacheEntry
-                 [kVRequest_table req | req <- Vector.toList reqs])
+                 (Set.toList $ Set.fromList $ map kVRequest_table $ Vector.toList reqs))
             KVSState
                 { _cache = cache_
                 , _storage = db
@@ -231,7 +231,8 @@ execRequestsFine ::
     -> StateT (KVSState a) IO (Vector.Vector KVResponse)
 execRequestsFine reqs = do
   -- cache management: load all entries needed to process the requests
-  newEntries <- mapM Cache.loadCacheEntry [kVRequest_table req | req <- Vector.toList reqs]
+  newEntries <- mapM Cache.loadCacheEntry
+                 (Set.toList $ Set.fromList $ map kVRequest_table $ Vector.toList reqs)
   mapM_ Cache.insertTableIntoCache $ catMaybes newEntries
 
   -- request handling

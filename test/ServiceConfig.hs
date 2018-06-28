@@ -11,6 +11,7 @@ import qualified Data.Text.Lazy            as T
 import qualified Data.HashMap.Strict       as HM
 import qualified Data.ByteString.Lazy      as BS
 import           Data.IORef
+import Data.Hashable
 
 import qualified DB_Iface                  as DB
 import           Db_Types
@@ -27,6 +28,12 @@ import           Crypto
 import GHC.Stack
 import Control.Monad
 
+import Data.Binary as Ser
+import Data.Binary.Orphans ()
+
+import Data.Serialize as Cereal
+import Data.Serialize.Text
+
 
 data MockDB = MockDB {
       _dbRef :: IORef (HM.HashMap T.Text BS.ByteString)
@@ -42,7 +49,8 @@ instance DB.DB_Iface MockDB where
     return resp
 
   put :: MockDB -> T.Text -> BS.ByteString -> IO ()
-  put (MockDB dbRef minLatency) key !value = do
+  put (MockDB dbRef minLatency) key value = do
+    value `deepseq` pure ()
     db <- readIORef dbRef
     -- traceM $ "key: " ++ show key
     -- let convert = \case (Just p) -> p; Nothing -> T.empty
@@ -103,3 +111,19 @@ noEnc = Encryption (\s t -> (t,s)) ()
 
 noDec :: Decryption
 noDec = Decryption (\s t -> (t,s)) ()
+
+binarySerialization :: Serialization
+binarySerialization = Serialization (\() tbl -> (Ser.encode tbl, ())) ()
+
+binaryDeserialization :: Deserialization
+binaryDeserialization = Deserialization (\() tbl -> (Ser.decode tbl, ())) ()
+
+instance (Hashable key, Eq key, Cereal.Serialize key, Cereal.Serialize value) => Cereal.Serialize (HM.HashMap key value) where
+    get = HM.fromList <$> Cereal.get
+    put = Cereal.put . HM.toList
+
+cerealSerialization :: Serialization
+cerealSerialization =  Serialization (\() tbl -> (BS.fromStrict $ Cereal.encode tbl, ())) ()
+
+cerealDeserialization :: Deserialization
+cerealDeserialization =  Deserialization (\() tbl -> (either error id $ Cereal.decode $ BS.toStrict tbl, ())) ()

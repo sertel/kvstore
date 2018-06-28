@@ -49,7 +49,7 @@ execRequestsOhua cache db reqs
     newEntries <-
         smap
             (CF.loadCacheEntry cache db)
-            [kVRequest_table req | req <- Vector.toList reqs]
+            (Set.toList $ Set.fromList $ map kVRequest_table $ Vector.toList reqs)
     cache' <-
         liftWithIndex foldIntoCacheStateIdx (foldIntoCache cache) newEntries
   -- make sure the tests still run after removing this
