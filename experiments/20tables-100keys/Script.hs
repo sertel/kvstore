@@ -13,7 +13,7 @@ import Control.Monad
 
 confs =
   [ BatchConfig
-    { keyCount = 200
+    { keyCount = 100
     , batchCount = 30
     , batchSize = 30
     , useEncryption = True
