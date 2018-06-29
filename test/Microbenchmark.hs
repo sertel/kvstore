@@ -222,7 +222,7 @@ defaultBenchmarkState =
         , _fieldCountSelection = RangeGen 3 10 $ mkStdGen 0
         , _scanCountSelection = RangeGen 5 10 $ mkStdGen 0
         }
-  -- traceM "requ
+  -- traceM "recur
 
 loadDB useEncryption tc keyCount = do
     s <- initState useEncryption
@@ -233,12 +233,14 @@ loadDB useEncryption tc keyCount = do
             { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
             , _tableSelection = RangeGen i i $ mkStdGen 0
             }
-  -- traceM "requests (INSERT):"
-  -- mapM (\i -> traceM $ show i ++ "\n" ) requests
+    -- tracem "requests (INSERT):"
+    -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _)}) <-
         flip runStateT s $ ?execRequests requests
   -- adjust minLatency for benchmark requests
-    return s' {_storage = MockDB db 50}
+    content <- readIORef db
+    forceA_ content
+    return s' {_storage = MockDB db 300000}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
@@ -257,10 +259,9 @@ currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 runRequests ::
        (?execRequests :: ExecReqFn)
     => Int
-    -> Int
     -> BenchmarkState RangeGen
     -> StateT (KVSState MockDB) IO Integer
-runRequests operationCount _ bmState = do
+runRequests operationCount bmState = do
     (requests, _) <- liftIO $ runStateT (workload operationCount) bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
@@ -294,7 +295,7 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
     let bmState = reqBenchmarkState keyCount numTables
     execTimes <-
         flip evalStateT s $
-        sequence $ replicate batchCount (runRequests batchSize keyCount bmState)
+        sequence $ replicate batchCount (runRequests batchSize bmState)
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
@@ -314,12 +315,11 @@ confs =
 
 outputFile = "100keys-20tables.json"
 
-
+avg l = sum l `div` toInteger (length l)
 
 testEachAction replications = do
     results <- sequence $ replicate replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
-    let avg l = sum l `div` toInteger (length l)
-        stats = fmap (fmap avg) (Map.unionsWith (Map.unionWith mappend) $ map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
+    let stats = fmap (fmap avg) (Map.unionsWith (Map.unionWith mappend) $ map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
     writeFile
         "stat-results"
         (show $ fmap (second (fmap (first show) . Map.toList)) $ Map.toList stats)
@@ -352,8 +352,39 @@ testEachAction replications = do
         Map.fromList <$> readIORef statVar
 
 
+profileRequests :: IO ()
+profileRequests = do
+    s <-
+        let ?execRequests = KVS.execRequestsFunctional
+         in loadDB True numTables keyCount
+    t0 <- currentTimeMillis
+    stats <-
+        flip evalStateT s $ sequence $
+        replicate 5 $ do
+            (requests, _) <-
+                liftIO $ runStateT (workload operationCount) bmState
+            forceA_ requests
+            liftIO performGC
+            (responses, stats) <- KVS.execRequestsFunctional0 requests
+            t0 <- liftIO getCPUTime
+            forceA_ responses
+            t1 <- liftIO getCPUTime
+            let execTime = t1 - t0
+            pure $ Map.insert "setup/force-result" execTime stats
+    t1 <- currentTimeMillis
+    printf "Exec time: %d\n" (t1 - t0)
+    writeFile "bench-stats" $ show [("benchmark", map (first show) $ Map.toList $ fmap sum $ Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)]
+  where
+    operationCount = 30
+    bmState = reqBenchmarkState keyCount numTables
+    numTables = 20
+    keyCount = 100
+
 main :: IO ()
-main = benchMain -- testEachAction 10
+main =
+  -- profileRequests
+  -- testEachAction 10
+  benchMain
 
 
 benchMain :: IO ()

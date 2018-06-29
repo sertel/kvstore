@@ -70,20 +70,20 @@ deriving instance Generic DecompressParams
 instance NFData DecompressParams
 
 zlibComp :: Compression
--- zlibComp = flip Compression defaultCompressParams
---                             $ \s t -> let c = compressWith s t
---                                       in (c,s)
-zlibComp = flip Compression ()
-                            $ \s t -> let c = compress t
+zlibComp = flip Compression defaultCompressParams { compressLevel = compressionLevel 7 }
+                            $ \s t -> let c = compressWith s t
                                       in (c,s)
+-- zlibComp = flip Compression ()
+--                             $ \s t -> let c = compress t
+--                                       in (c,s)
 
 zlibDecomp :: Decompression
--- zlibDecomp = flip Decompression defaultDecompressParams
---                                 $ \s t -> let d = decompressWith s t
---                                           in (d,s)
-zlibDecomp = flip Decompression ()
-                                $ \s t -> let d = decompress t
+zlibDecomp = flip Decompression defaultDecompressParams
+                                $ \s t -> let d = decompressWith s t
                                           in (d,s)
+-- zlibDecomp = flip Decompression ()
+--                                 $ \s t -> let d = decompress t
+--                                           in (d,s)
 
 noComp :: Compression
 noComp = Compression (\s t -> (t, s)) ()

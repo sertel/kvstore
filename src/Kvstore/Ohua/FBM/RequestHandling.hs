@@ -28,6 +28,7 @@ import           Control.DeepSeq            as DS
 import           Debug.Trace
 
 import           Kvstore.Ohua.RequestHandling
+import           Kvstore.Ohua.Cache
 
 --
 -- algos
@@ -40,9 +41,9 @@ store serializeTableStateIdx
       encryptTableStateIdx
       storeTableStateIdx
       db tableId table = do
-        serializedTable <- liftWithIndex serializeTableStateIdx serializeTable table
-        compressedTable <- liftWithIndex compressTableStateIdx compressTable serializedTable
-        encryptedTable <- liftWithIndex encryptTableStateIdx encryptTable compressedTable
+        serializedTable <- liftWithIndex serializeTableStateIdx serializeTableSF table
+        compressedTable <- liftWithIndex compressTableStateIdx compressTableSF serializedTable
+        encryptedTable <- liftWithIndex encryptTableStateIdx encryptTableSF compressedTable
         _ <- liftWithIndex storeTableStateIdx (storeTable db tableId) encryptedTable
         return ()
 

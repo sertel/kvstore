@@ -29,6 +29,7 @@ import           Kvstore.Ohua.SBFM.KVSTypes
 import           Debug.Trace
 
 import           Kvstore.Ohua.RequestHandling
+import           Kvstore.Ohua.Cache
 
 --
 -- algos
@@ -36,10 +37,23 @@ import           Kvstore.Ohua.RequestHandling
 
 prepareTable :: Int -> Int -> Int -> Var Table -> ASTM [Dynamic] (Var BS.ByteString)
 prepareTable serializeTableStateIdx compressTableStateIdx encryptTableStateIdx table = do
-    serializedTable <- liftWithIndexNamed serializeTableStateIdx "prepare-store/serialize" serializeTable table
+    serializedTable <-
+        liftWithIndexNamed
+            serializeTableStateIdx
+            "prepare-store/serialize"
+            serializeTableSF
+            table
     compressedTable <-
-        liftWithIndexNamed compressTableStateIdx "prepare-store/compress" compressTable serializedTable
-    liftWithIndexNamed encryptTableStateIdx "prepare-store/encrypt" encryptTable compressedTable
+        liftWithIndexNamed
+            compressTableStateIdx
+            "prepare-store/compress"
+            compressTableSF
+            serializedTable
+    liftWithIndexNamed
+        encryptTableStateIdx
+        "prepare-store/encrypt"
+        encryptTableSF
+        compressedTable
         -- _ <- liftWithIndex updateStoreTableStateIdx (storeTable db tableId) serializedTable
 
 pure' :: (Applicative m, NFData a) => a -> m a

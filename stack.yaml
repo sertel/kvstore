@@ -3,10 +3,9 @@ extra-package-dbs: []
 packages:
 - .
 - location:
-    # git: git@bit bucket.org:nrink/statefulness
-    # commit: 8e218ce6f4d0d54e5ee4048d2e0f6c3d9055e32f
-    #commit: 947a71592a6b278d86dddab2f7191156bc2c849d
-    ../statefulness # for debugging only
+    git: git@bitbucket.org:nrink/statefulness
+    commit: 8e218ce6f4d0d54e5ee4048d2e0f6c3d9055e32f
+    # ../statefulness # for debugging only
   extra-dep: true
 - location:
     git: git@github.com:ohua-dev/ohua-core

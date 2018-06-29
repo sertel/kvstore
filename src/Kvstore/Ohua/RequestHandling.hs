@@ -84,32 +84,32 @@ calculateDelete cache tableId key values =
         (Just table) -> HM.insert key values table
         Nothing -> HM.singleton key values
 
-serializeTable :: Table -> StateT Serialization IO BS.ByteString
-serializeTable table = do
-    ser <- get
-    (r, KVSState {_serializer = ser'}) <-
-        liftIO $
-        runStateT (InOut.serializeTable table) KVSState {_serializer = ser}
-    put ser'
-    return r
+-- serializeTable :: Table -> StateT Serialization IO BS.ByteString
+-- serializeTable table = do
+--     ser <- get
+--     (r, KVSState {_serializer = ser'}) <-
+--         liftIO $
+--         runStateT (InOut.serializeTable table) KVSState {_serializer = ser}
+--     put ser'
+--     return r
 
-compressTable :: BS.ByteString -> StateT Compression IO BS.ByteString
-compressTable table = do
-    comp <- get
-    (r, KVSState {_compression = comp'}) <-
-        liftIO $
-        runStateT (InOut.compressTable table) KVSState {_compression = comp}
-    put comp'
-    return r
+-- compressTable :: BS.ByteString -> StateT Compression IO BS.ByteString
+-- compressTable table = do
+--     comp <- get
+--     (r, KVSState {_compression = comp'}) <-
+--         liftIO $
+--         runStateT (InOut.compressTable table) KVSState {_compression = comp}
+--     put comp'
+--     return r
 
-encryptTable :: BS.ByteString -> StateT Encryption IO BS.ByteString
-encryptTable table = do
-    enc <- get
-    (r, KVSState {_encryption = enc'}) <-
-        liftIO $
-        runStateT (InOut.encryptTable table) KVSState {_encryption = enc}
-    put enc'
-    return r
+-- encryptTable :: BS.ByteString -> StateT Encryption IO BS.ByteString
+-- encryptTable table = do
+--     enc <- get
+--     (r, KVSState {_encryption = enc'}) <-
+--         liftIO $
+--         runStateT (InOut.encryptTable table) KVSState {_encryption = enc}
+--     put enc'
+--     return r
 
 storeTable ::
        (DB.DB_Iface db)
