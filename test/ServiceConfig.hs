@@ -34,29 +34,32 @@ import Data.Binary.Orphans ()
 import Data.Serialize as Cereal
 import Data.Serialize.Text
 
+import Kvstore.Ohua.Cache (forceLazyByteString)
 
 data MockDB = MockDB {
       _dbRef :: IORef (HM.HashMap T.Text BS.ByteString)
-    , _minLatency :: Int } deriving Generic
+    , _readLatency :: Int
+    , _writeLatency :: Int
+    } deriving Generic
 deriving instance NFData MockDB
 
 instance DB.DB_Iface MockDB where
   get :: MockDB -> T.Text -> IO DBResponse
-  get (MockDB dbRef minLatency) key = do
+  get (MockDB dbRef readLatency _) key = do
     -- traceM $ "getting data for key: " ++ show key
     resp <- DBResponse . HM.lookup key <$> readIORef dbRef
-    unless (minLatency == 0) $ threadDelay minLatency
+    unless (readLatency == 0) $ threadDelay readLatency
     return resp
 
   put :: MockDB -> T.Text -> BS.ByteString -> IO ()
-  put (MockDB dbRef minLatency) key value = do
-    value `deepseq` pure ()
+  put (MockDB dbRef _ writeLatency) key value = do
+    forceLazyByteString value `deepseq` pure ()
     db <- readIORef dbRef
     -- traceM $ "key: " ++ show key
     -- let convert = \case (Just p) -> p; Nothing -> T.empty
     let db' = HM.insert key value db
     writeIORef dbRef db'
-    unless (minLatency == 0) $ threadDelay minLatency
+    unless (writeLatency == 0) $ threadDelay writeLatency
 
 deriving instance Generic CompressParams
 deriving instance NFData CompressParams

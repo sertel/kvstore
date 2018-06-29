@@ -13,6 +13,7 @@ data BatchConfig = BatchConfig
   , numTables :: Int
   , threadCount :: Int
   , systemVersion :: Version
+  , numFields :: Int
   }
 
 deriveJSON defaultOptions ''Version

@@ -67,7 +67,7 @@ initState useEncryption = do
     return $
         KVSState
             HM.empty
-            (MockDB db 0) -- latency is 0 for loading the DB and then
+            (MockDB db 0 0) -- latency is 0 for loading the DB and then
                           -- we set it for the requests
             binarySerialization
             binaryDeserialization
@@ -206,7 +206,7 @@ workload operationCount =
     V.fromList <$> mapM (const createRequest) [1 .. operationCount]
 
 showState :: KVSState MockDB -> IO String
-showState KVSState {_cache = cache, _storage = MockDB dbRef _} = do
+showState KVSState {_cache = cache, _storage = MockDB dbRef _ _} = do
     db <- readIORef dbRef
     return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
@@ -235,22 +235,24 @@ loadDB useEncryption tc keyCount = do
             }
     -- tracem "requests (INSERT):"
     -- mapM (\i -> traceM $ show i ++ "\n" ) requests
-    (responses, s'@KVSState {_storage = (MockDB db _)}) <-
+    (responses, s'@KVSState {_storage = (MockDB db _ _)}) <-
         flip runStateT s $ ?execRequests requests
   -- adjust minLatency for benchmark requests
     content <- readIORef db
     forceA_ content
-    return s' {_storage = MockDB db 300000}
+    return s' {_storage = MockDB db 20 4000}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
 
-reqBenchmarkState keyCount numTables =
+reqBenchmarkState keyCount numTables fieldCount =
     defaultBenchmarkState
         { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
         , _operationSelection = RangeGen 0 4 $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
         , _tableCount = numTables
         , _tableSelection = RangeGen 0 numTables $ mkStdGen 0
+        , _fieldCount = fieldCount
+        , _fieldCountSelection = RangeGen 0 fieldCount $ mkStdGen 0
         }
 
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime
@@ -290,9 +292,10 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                                , batchCount
                                , batchSize
                                , numTables
+                               , numFields
                                } = do
     s <- loadDB useEncryption numTables keyCount
-    let bmState = reqBenchmarkState keyCount numTables
+    let bmState = reqBenchmarkState keyCount numTables numFields
     execTimes <-
         flip evalStateT s $
         sequence $ replicate batchCount (runRequests batchSize bmState)
@@ -359,8 +362,9 @@ profileRequests = do
          in loadDB True numTables keyCount
     t0 <- currentTimeMillis
     stats <-
-        flip evalStateT s $ sequence $
-        replicate 5 $ do
+        flip evalStateT s $
+        sequence $
+        replicate 1 $ do
             (requests, _) <-
                 liftIO $ runStateT (workload operationCount) bmState
             forceA_ requests
@@ -373,18 +377,26 @@ profileRequests = do
             pure $ Map.insert "setup/force-result" execTime stats
     t1 <- currentTimeMillis
     printf "Exec time: %d\n" (t1 - t0)
-    writeFile "bench-stats" $ show [("benchmark", map (first show) $ Map.toList $ fmap sum $ Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)]
+    writeFile "bench-stats" $
+        show
+            [ ( "benchmark"
+              , map (first show) $
+                Map.toList $
+                fmap sum $
+                Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)
+            ]
   where
     operationCount = 30
-    bmState = reqBenchmarkState keyCount numTables
+    bmState = reqBenchmarkState keyCount numTables fieldCount
     numTables = 20
-    keyCount = 100
+    keyCount = 25
+    fieldCount = 5
 
 main :: IO ()
 main =
-  -- profileRequests
+  profileRequests
   -- testEachAction 10
-  benchMain
+  -- benchMain
 
 
 benchMain :: IO ()

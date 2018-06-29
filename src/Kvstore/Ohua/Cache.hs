@@ -42,7 +42,11 @@ withForceByteString bs
     | otherwise = bs
 
 loadTableSF :: (DB.DB_Iface a) => a -> T.Text -> StateT Stateless IO (Maybe BS.ByteString)
-loadTableSF db tableId = liftIO $ evalStateT (loadTable tableId >>= \bs -> maybe () forceLazyByteString bs `deepseq` pure bs) KVSState{ _storage=db }
+loadTableSF db tableId =
+    liftIO $
+    evalStateT
+        (loadTable tableId)
+        KVSState {_storage = db}
 
 deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
 deserializeTableSF d = do
