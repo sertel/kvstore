@@ -73,7 +73,7 @@ deriving instance Generic DecompressParams
 instance NFData DecompressParams
 
 zlibComp :: Compression
-zlibComp = flip Compression defaultCompressParams { compressLevel = compressionLevel 7 }
+zlibComp = flip Compression defaultCompressParams { compressLevel = compressionLevel 8 }
                             $ \s t -> let c = compressWith s t
                                       in (c,s)
 -- zlibComp = flip Compression ()

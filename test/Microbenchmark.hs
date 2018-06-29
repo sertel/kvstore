@@ -240,7 +240,7 @@ loadDB useEncryption tc keyCount = do
   -- adjust minLatency for benchmark requests
     content <- readIORef db
     forceA_ content
-    return s' {_storage = MockDB db 20 4000}
+    return s' {_storage = MockDB db 20 15000}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
@@ -364,7 +364,7 @@ profileRequests = do
     stats <-
         flip evalStateT s $
         sequence $
-        replicate 1 $ do
+        replicate 5 $ do
             (requests, _) <-
                 liftIO $ runStateT (workload operationCount) bmState
             forceA_ requests
@@ -382,7 +382,7 @@ profileRequests = do
             [ ( "benchmark"
               , map (first show) $
                 Map.toList $
-                fmap sum $
+                fmap avg $
                 Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)
             ]
   where

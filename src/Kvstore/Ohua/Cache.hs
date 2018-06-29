@@ -48,10 +48,13 @@ loadTableSF db tableId =
         (loadTable tableId)
         KVSState {_storage = db}
 
+withForceWHNF :: Monad m => m a -> m a
+withForceWHNF m = m >>= \x -> x `seq` pure x
+
 deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
 deserializeTableSF d = do
   deser <- get
-  (r, KVSState{ _deserializer=deser' }) <- liftIO $ runStateT (deserializeTable d) KVSState{ _deserializer=deser }
+  (r, KVSState{ _deserializer=deser' }) <- liftIO $ runStateT (withForceWHNF $ deserializeTable d) KVSState{ _deserializer=deser }
   put deser'
   return r
 
