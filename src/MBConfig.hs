@@ -14,7 +14,9 @@ data BatchConfig = BatchConfig
   , threadCount :: Int
   , systemVersion :: Version
   , numFields :: Int
+  , requestSelection :: Maybe Int
   }
+
 
 deriveJSON defaultOptions ''Version
 deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''BatchConfig

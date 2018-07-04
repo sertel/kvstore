@@ -245,10 +245,10 @@ loadDB useEncryption tc keyCount = do
   -- traceM =<< showState s'
   -- traceM "done with insert."
 
-reqBenchmarkState keyCount numTables fieldCount =
+reqBenchmarkState keyCount numTables fieldCount opSelect =
     defaultBenchmarkState
         { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
-        , _operationSelection = RangeGen 0 4 $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+        , _operationSelection = maybe (RangeGen 0 4) (\i -> RangeGen i i) opSelect $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
         , _tableCount = numTables
         , _tableSelection = RangeGen 0 numTables $ mkStdGen 0
         , _fieldCount = fieldCount
@@ -293,12 +293,13 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                                , batchSize
                                , numTables
                                , numFields
+                               , requestSelection
                                } = do
     s <- loadDB useEncryption numTables keyCount
-    let bmState = reqBenchmarkState keyCount numTables numFields
+    let bmState = reqBenchmarkState keyCount numTables numFields requestSelection
     execTimes <-
         flip evalStateT s $
-        sequence $ replicate batchCount (runRequests batchSize bmState)
+        replicateM batchCount (runRequests batchSize bmState)
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
@@ -387,7 +388,7 @@ profileRequests = do
             ]
   where
     operationCount = 30
-    bmState = reqBenchmarkState keyCount numTables fieldCount
+    bmState = reqBenchmarkState keyCount numTables fieldCount Nothing
     numTables = 20
     keyCount = 25
     fieldCount = 5
