@@ -25,6 +25,11 @@ library
                      , Kvstore.Ohua.FBM.KeyValueService
                      , Kvstore.Ohua.SBFM.Cache
                      , Kvstore.Ohua.SBFM.KeyValueService
+                     , Kvstore.RequestHandling
+                     , Kvstore.Ohua.RequestHandling
+                     , Kvstore.Ohua.FBM.RequestHandling
+                     , Kvstore.Ohua.SBFM.RequestHandling
+                     , Kvstore.Ohua.SBFM.KVSTypes
                      , Kvservice_Types
                      , Database.DatabaseService
                      , KeyValueStore
@@ -36,11 +41,6 @@ library
                      , MBConfig
                      , Versions
   other-modules:       KeyValueStore_Client
-                     , Kvstore.Ohua.RequestHandling
-                     , Kvstore.Ohua.FBM.RequestHandling
-                     , Kvstore.Ohua.SBFM.RequestHandling
-                     , Kvstore.Ohua.SBFM.KVSTypes
-                     , Kvstore.RequestHandling
                      , Kvservice_Consts
                      , DB
                      , DB_Client
@@ -162,6 +162,9 @@ executable microbench
                  , cereal
                  , hashable
                  , cereal-text
+                 , MonadRandom
+                 , statefulness
+                 , rdtsc
   other-modules:   Crypto
                  , Requests
                  , ServiceConfig

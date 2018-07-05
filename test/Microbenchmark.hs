@@ -2,14 +2,14 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns,
-  OverloadedStrings, FlexibleContexts, PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings,
+  FlexibleContexts, PartialTypeSignatures, RecordWildCards, TypeApplications #-}
 
 import Control.Lens
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
-import Control.Arrow (first, second)
+import Control.Arrow (first, second, (***), (&&&))
 import System.Random
 import Data.Void
 import Control.DeepSeq
@@ -26,6 +26,8 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as Set
 import qualified Data.Map as Map
+import qualified Data.Text.Lazy as T
+import Control.Monad.Random.Strict
 import Data.IORef
 import Data.List
 import Data.Time.Clock.POSIX
@@ -33,8 +35,22 @@ import qualified Data.Vector as V
 import Kvservice_Types
 import Kvstore.KVSTypes
 import Kvstore.Serialization
+import Kvstore.InputOutput (store)
+import Data.Dynamic2
+
+import qualified Monad.StreamsBasedExplicitAPI as SBFM
+import Control.Monad.Stream.Chan
+import qualified Monad.StreamsBasedFreeMonad as SBFM
+import qualified Monad.FuturesBasedMonad as FBM
+import Kvstore.Ohua.FBM.KeyValueService (pureUnitSf)
 
 import qualified Kvstore.Ohua.SBFM.KeyValueService as KVS
+import qualified Kvstore.Ohua.SBFM.RequestHandling as SBFM
+import qualified Kvstore.Ohua.FBM.KeyValueService as FBM
+import qualified Kvstore.Ohua.FBM.RequestHandling as FBM
+import qualified Data.StateElement as FBM
+
+import Kvstore.Ohua.RequestHandling (storeTable)
 
 import Requests
 import ServiceConfig
@@ -67,7 +83,7 @@ initState useEncryption = do
     return $
         KVSState
             HM.empty
-            (MockDB db 0 0) -- latency is 0 for loading the DB and then
+            (makeNoWait db) -- latency is 0 for loading the DB and then
                           -- we set it for the requests
             binarySerialization
             binaryDeserialization
@@ -227,12 +243,15 @@ defaultBenchmarkState =
 loadDB useEncryption tc keyCount = do
     s <- initState useEncryption
   -- fill the db first
-    requests <- fmap V.concat $ forM [0..tc - 1] $ \i ->
-        evalStateT (workload keyCount)
-        defaultBenchmarkState
-            { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
-            , _tableSelection = RangeGen i i $ mkStdGen 0
-            }
+    requests <-
+        fmap V.concat $
+        forM [0 .. tc - 1] $ \i ->
+            evalStateT
+                (workload keyCount)
+                defaultBenchmarkState
+                    { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
+                    , _tableSelection = RangeGen i i $ mkStdGen 0
+                    }
     -- tracem "requests (INSERT):"
     -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     (responses, s'@KVSState {_storage = (MockDB db _ _)}) <-
@@ -240,7 +259,8 @@ loadDB useEncryption tc keyCount = do
   -- adjust minLatency for benchmark requests
     content <- readIORef db
     forceA_ content
-    return s' {_storage = MockDB db 20 15000}
+    newDB <- make db 20 1000000000000000000000000
+    return s' {_storage = newDB}
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
@@ -248,7 +268,9 @@ loadDB useEncryption tc keyCount = do
 reqBenchmarkState keyCount numTables fieldCount opSelect =
     defaultBenchmarkState
         { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
-        , _operationSelection = maybe (RangeGen 0 4) (\i -> RangeGen i i) opSelect $ mkStdGen 0 -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
+        , _operationSelection =
+              maybe (RangeGen 0 4) (\i -> RangeGen i i) opSelect $ mkStdGen 0
+              -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
         , _tableCount = numTables
         , _tableSelection = RangeGen 0 numTables $ mkStdGen 0
         , _fieldCount = fieldCount
@@ -322,11 +344,17 @@ outputFile = "100keys-20tables.json"
 avg l = sum l `div` toInteger (length l)
 
 testEachAction replications = do
-    results <- sequence $ replicate replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
-    let stats = fmap (fmap avg) (Map.unionsWith (Map.unionWith mappend) $ map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
+    results <-
+        sequence $ replicate replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
+    let stats =
+            fmap
+                (fmap avg)
+                (Map.unionsWith (Map.unionWith mappend) $
+                 map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
     writeFile
         "stat-results"
-        (show $ fmap (second (fmap (first show) . Map.toList)) $ Map.toList stats)
+        (show $
+         fmap (second (fmap (first show) . Map.toList)) $ Map.toList stats)
   where
     runTest = do
         statVar <- newIORef mempty
@@ -393,11 +421,146 @@ profileRequests = do
     keyCount = 25
     fieldCount = 5
 
+type RawWritePipeline = [(T.Text, Table)] -> StateT (KVSState MockDB) IO ()
+
+pureWritePipeline :: RawWritePipeline
+pureWritePipeline = mapM_ $ uncurry store
+
+sbfmWritePipeline :: [(T.Text, Table)] -> StateT (KVSState MockDB) IO _
+sbfmWritePipeline tables0 =
+    get >>= \KVSState {..} ->
+        -- fmap snd .
+        void .
+        liftIO $
+        runChanM .
+        flip
+            SBFM.runAlgo
+            [ undefined
+            , toDyn _serializer
+            , toDyn _compression
+            , toDyn _encryption
+            , undefined
+            ] =<<
+        SBFM.createAlgo
+            (do tables <- SBFM.sfConst tables0
+                db <- SBFM.sfConst _storage
+                let f tabAndKey = do
+                        tab <-
+                            SBFM.liftWithIndexNamed
+                                noStateIdx
+                                "aux/snd"
+                                (pureUnitSf . snd)
+                                tabAndKey
+                        tid <-
+                            SBFM.liftWithIndexNamed
+                                noStateIdx
+                                "aux/fst"
+                                (pureUnitSf . fst)
+                                tabAndKey
+                        p <- SBFM.prepareTable serIdx compIdx encIdx tab
+                        SBFM.lift3WithIndexNamed
+                            storeIdx
+                            "pipeline/store-table"
+                            storeTable
+                            db
+                            tid
+                            p
+                SBFM.smap f tables)
+  where
+    noStateIdx = 0
+    serIdx = 1
+    compIdx = 2
+    encIdx = 3
+    storeIdx = 4
+
+
+fbmWritePipeline :: RawWritePipeline
+fbmWritePipeline tables =
+    get >>= \KVSState {..} ->
+        void $
+        liftIO $
+        flip
+            FBM.runOhuaM
+            [FBM.toS _serializer, FBM.toS _compression, s, FBM.toS _encryption] $
+        FBM.smap
+            (\(tid, t) ->
+                 FBM.store serIdx compIdx encIdx storeIdx _storage tid t)
+            tables
+  where
+    s = FBM.toS ()
+    serIdx = 0
+    compIdx = 1
+    storeIdx = 2
+    encIdx = 3
+
+testPipeline :: IO ()
+testPipeline = do
+  tables <- evalRandIO $ genTables 20
+  forceA_ tables
+  mapM_ (runTest tables) [1..4]
+  where
+    runTest tables cores = do
+        setNumCapabilities cores
+        (times, dbs) <-
+            unzip <$>
+            mapM
+                (uncurry $ runSystem tables)
+                --,
+                [
+                  --("pure", pureWritePipeline)
+                  ( "sbfm"
+                  ,
+                    -- do liftIO .
+                    --        writeFile "stats" .
+                    --        show .
+                    --        pure @[] .
+                    --        ("pipeline", ) . map (first show) . Map.toList <=<
+                           sbfmWritePipeline)
+                , ("fbm", fbmWritePipeline)
+                ]
+        pure times
+      -- let namedDbs = zip (map fst times) dbs
+      -- let pureDB = head dbs
+      -- forM_ (tail namedDbs) $ \(name, db) ->
+      --   unless (db == pureDB) $ printf "Database for %v is unequal to pure database\n" name
+      -- let variants = length (nub dbs)
+      -- unless (variants == 1) $ error $ printf "Inequality in databases: %d versions" variants
+    rInt :: MonadRandom m => m Int
+    rInt = getRandom
+    keyCount = 1000
+    fieldCount = 100
+    genTables = flip replicateM genTable
+    genTable =
+        curry ((T.pack . tableTemplate) *** HM.fromList) <$> rInt <*>
+        replicateM keyCount genKVPair
+    genKVPair =
+        curry ((T.pack . keyTemplate) *** HM.fromList) <$> rInt <*>
+        replicateM fieldCount genFields
+    genFields =
+        curry ((T.pack . fieldTemplate) *** (T.pack . valueTemplate)) <$> rInt <*>
+        rInt
+    getDB = readIORef . _dbRef . _storage
+    forceDB state = getDB state >>= forceA
+    runSystem tables sys f = do
+        s0 <- initState True
+        let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 30000000 }
+        hPrintf stderr "Running %s ..." (sys :: String)
+        hFlush stderr
+        t0 <- currentTimeMillis
+        runStateT (f tables) s
+        forceDB s
+        t1 <- currentTimeMillis
+        let time = t1 - t0
+        hPrintf stderr "%v\n" (show time)
+        db <- getDB s
+        pure ((sys, time), db)
+
 main :: IO ()
 main =
-  profileRequests
+  -- profileRequests
   -- testEachAction 10
   -- benchMain
+  testPipeline
 
 
 benchMain :: IO ()
