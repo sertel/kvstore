@@ -49,6 +49,7 @@ prepareTable serializeTableStateIdx compressTableStateIdx encryptTableStateIdx t
             "prepare-store/compress"
             compressTableSF
             serializedTable
+    -- return compressedTable
     liftWithIndexNamed
         encryptTableStateIdx
         "prepare-store/encrypt"

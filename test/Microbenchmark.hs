@@ -4,21 +4,25 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings,
   FlexibleContexts, PartialTypeSignatures, RecordWildCards, TypeApplications #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE DeriveAnyClass    #-}
 
 import Control.Lens
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
 import Control.Arrow (first, second, (***), (&&&))
+import Control.Concurrent (threadDelay)
 import System.Random
 import Data.Void
 import Control.DeepSeq
+import Control.Exception
 import System.Exit
 import System.IO
 import System.Mem
 import System.CPUTime
 
-import GHC.Conc.Sync (setNumCapabilities)
+import GHC.Conc.Sync (setNumCapabilities,numCapabilities)
 
 import Data.Aeson as AE
 import Data.Aeson.TH as AE
@@ -39,7 +43,10 @@ import Kvstore.InputOutput (store)
 import Data.Dynamic2
 
 import qualified Monad.StreamsBasedExplicitAPI as SBFM
+import Control.Monad.Stream (MonadStream)
 import Control.Monad.Stream.Chan
+import Control.Monad.Stream.PinnedChan
+import Control.Monad.Stream.Par
 import qualified Monad.StreamsBasedFreeMonad as SBFM
 import qualified Monad.FuturesBasedMonad as FBM
 import Kvstore.Ohua.FBM.KeyValueService (pureUnitSf)
@@ -61,6 +68,8 @@ import Statistics.Sample (mean)
 
 import Debug.Trace
 import Text.Printf
+
+import GHC.Generics
 
 
 forceA :: (NFData a, Applicative f) => a -> f a
@@ -396,6 +405,7 @@ profileRequests = do
         replicate 5 $ do
             (requests, _) <-
                 liftIO $ runStateT (workload operationCount) bmState
+            -- liftIO $ evaluate $ force requests
             forceA_ requests
             liftIO performGC
             (responses, stats) <- KVS.execRequestsFunctional0 requests
@@ -426,15 +436,16 @@ type RawWritePipeline = [(T.Text, Table)] -> StateT (KVSState MockDB) IO ()
 pureWritePipeline :: RawWritePipeline
 pureWritePipeline = mapM_ $ uncurry store
 
-sbfmWritePipeline :: [(T.Text, Table)] -> StateT (KVSState MockDB) IO _
-sbfmWritePipeline tables0 =
+sbfmWritePipeline :: MonadStream m => (m _ -> IO _) -> [(T.Text, Table)] -> StateT (KVSState MockDB) IO _
+sbfmWritePipeline runner tables0 =
     get >>= \KVSState {..} ->
-        -- fmap snd .
-        void .
+        fmap snd .
+        -- void .
         liftIO $
-        runChanM .
+        runner .
         flip
-            SBFM.runAlgo
+            -- SBFM.runAlgo
+            SBFM.runAlgoWStats
             [ undefined
             , toDyn _serializer
             , toDyn _compression
@@ -473,7 +484,6 @@ sbfmWritePipeline tables0 =
     encIdx = 3
     storeIdx = 4
 
-
 fbmWritePipeline :: RawWritePipeline
 fbmWritePipeline tables =
     get >>= \KVSState {..} ->
@@ -493,30 +503,142 @@ fbmWritePipeline tables =
     storeIdx = 2
     encIdx = 3
 
-testPipeline :: IO ()
-testPipeline = do
-  tables <- evalRandIO $ genTables 20
+-- configs that work:
+-- genTables = 300
+-- keyCount = 100
+-- fieldCount = 100
+-- at a latency of 600000 I get:
+-- ("pipeline/store-table",    27998186667),
+-- ("prepare-store/compress",  31196806667),
+-- ("prepare-store/encrypt",   13689993333),
+-- ("prepare-store/serialize", 30687693333)
+-- still I barely get a speedup of about 2x for FBM:
+-- Running fbm with ... --> numCores: 1
+-- 10125
+-- Running fbm with ... --> numCores: 4
+-- 7629
+-- Running fbm with ... --> numCores: 3
+-- 6988
+-- Running fbm with ... --> numCores: 2
+-- 7881
+--
+-- SBFM (MVars) does quite good though:
+--
+-- Running sbfm with ... --> numCores: 1
+-- 13769
+-- Running sbfm with ... --> numCores: 4
+-- 8343
+-- Running sbfm with ... --> numCores: 3
+-- 7076
+-- Running sbfm with ... --> numCores: 2
+-- 6523
+-- ===> However, I never got a 3-fold speedup!
+-- (Why is the exec time 3s shorter in FBM?)
+--
+-- some more tries:
+--
+-- Running fbm with ... --> numCores: 1
+-- 11928
+-- Running fbm with ... --> numCores: 4
+-- 6800
+-- Running fbm with ... --> numCores: 3
+-- 6784
+-- Running fbm with ... --> numCores: 2
+-- 7417
+--
+-- Running fbm with ... --> numCores: 1
+-- 11647
+-- Running fbm with ... --> numCores: 4
+-- 7122
+-- Running fbm with ... --> numCores: 3
+-- 6820
+-- Running fbm with ... --> numCores: 2
+-- 6889
+
+
+-- ---> reducing the latency to 500 gives me the following results:
+-- Running fbm with ... --> numCores: 1
+-- 8231
+-- Running fbm with ... --> numCores: 4
+-- 4850
+-- Running fbm with ... --> numCores: 3
+-- 4653
+-- Running fbm with ... --> numCores: 2
+-- 4322
+
+-- Running sbfm with ... --> numCores: 1
+-- 8721
+-- Running sbfm with ... --> numCores: 4
+-- 4639
+-- Running sbfm with ... --> numCores: 3
+-- 3797
+-- Running sbfm with ... --> numCores: 2
+-- 4634
+
+-- --> both do equally well, but FBM is better without the delay for some reason!
+
+---------------------
+--
+-- genTables = 600
+-- keyCount = 100
+-- fieldCount = 50
+--
+-- genTables = 1200
+-- keyCount = 50
+-- fieldCount = 50
+-- not as good as above but still work:
+-- genTables = 20
+-- keyCount = 300
+-- fieldCount = 400
+
+-- configs that do not work as well:
+-- genTables = 100
+-- keyCount = 100
+-- fieldCount = 100
+--
+-- genTables = 50
+-- keyCount = 100
+-- fieldCount = 100
+--
+
+testPipeline :: Int -> Int -> [Int] -> IO [[(String, Integer)]]
+testPipeline numEntries numFields cores = do
+  setStdGen (mkStdGen 20)
+  -- putStrLn " --> Generating tables ..."
+  tables <- evalRandIO $ genTables 300
   forceA_ tables
-  mapM_ (runTest tables) [1..4]
+  -- liftIO $ evaluate $ force tables
+  -- putStrLn " --> done."
+  mapM (runTest tables) cores
   where
     runTest tables cores = do
         setNumCapabilities cores
         (times, dbs) <-
             unzip <$>
             mapM
-                (uncurry $ runSystem tables)
+                (uncurry $ runSystem cores tables)
                 --,
                 [
-                  --("pure", pureWritePipeline)
-                  ( "sbfm"
-                  ,
-                    -- do liftIO .
-                    --        writeFile "stats" .
-                    --        show .
-                    --        pure @[] .
-                    --        ("pipeline", ) . map (first show) . Map.toList <=<
-                           sbfmWritePipeline)
-                , ("fbm", fbmWritePipeline)
+                -- ("pure", pureWritePipeline)
+                -- Options:
+                -- flip evalStateT (0::Int) . --> needs runtime option -qm
+                -- runChanM .
+                -- runParIO .
+                 -- ( "sbfm-chan", do liftIO .
+                 --                    writeFile "stats" .
+                 --                    show .
+                 --                    pure @[] .
+                 --                    ("pipeline", ) . map (first show) . Map.toList <=<
+                 --                    sbfmWritePipeline runChanM )
+                -- ,
+                -- FIXME fails with "thread blocked indefinitely on an MVar operation"
+                 ( "sbfm-par", do liftIO .
+                                    writeFile "stats" .
+                                    show .
+                                    pure @[] .
+                                    ("pipeline", ) . map (first show) . Map.toList <=<
+                                    sbfmWritePipeline runParIO )
+                 -- ("fbm", fbmWritePipeline)
                 ]
         pure times
       -- let namedDbs = zip (map fst times) dbs
@@ -527,8 +649,10 @@ testPipeline = do
       -- unless (variants == 1) $ error $ printf "Inequality in databases: %d versions" variants
     rInt :: MonadRandom m => m Int
     rInt = getRandom
-    keyCount = 1000
-    fieldCount = 100
+    -- keyCount = 20
+    -- fieldCount = 20
+    keyCount = numEntries
+    fieldCount = numFields
     genTables = flip replicateM genTable
     genTable =
         curry ((T.pack . tableTemplate) *** HM.fromList) <$> rInt <*>
@@ -541,27 +665,58 @@ testPipeline = do
         rInt
     getDB = readIORef . _dbRef . _storage
     forceDB state = getDB state >>= forceA
-    runSystem tables sys f = do
+    runSystem numCores tables sys f = do
+        -- putStrLn $ "num requests: " ++ (show $ length tables)
         s0 <- initState True
-        let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 30000000 }
-        hPrintf stderr "Running %s ..." (sys :: String)
-        hFlush stderr
+        -- let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 12000000 }
+        let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 1 }
+        -- hPrintf stderr "Running %s with ..." (sys :: String)
+        -- putStrLn $ " --> numCores: " ++ (show numCores)
+        -- hFlush stderr
+        -- just to create a pattern in the trace
+        liftIO performGC
+        liftIO performGC
+        liftIO performGC
         t0 <- currentTimeMillis
+        -- putStrLn $ " --> starting computation: " ++ (show t0)
         runStateT (f tables) s
+        -- putStrLn " --> after runStateT."
         forceDB s
         t1 <- currentTimeMillis
+        -- putStrLn $ " --> finished computation: " ++ (show t1)
         let time = t1 - t0
-        hPrintf stderr "%v\n" (show time)
+        -- hPrintf stderr "%v\n" (show time)
         db <- getDB s
         pure ((sys, time), db)
+
+
+data Recorded = Recorded { cores :: Int, size :: Int , sysAndTimes :: HM.HashMap String [Integer] } deriving Generic
+
+deriveJSON defaultOptions ''Recorded
+
+benchmarkGC :: IO ()
+benchmarkGC = do
+  results <- mapM runPipeline [100]--[10,20..100]
+  BS.writeFile "results.json" $ AE.encode results
+  return ()
+  where
+    runPipeline size = forM [1..4] $ runPipelineForCore size
+    runPipelineForCore size cores = do
+      putStrLn $ "Running config: #cores = " ++ (show cores) ++ " size = " ++ (show size)
+      times <- replicateM 2 $ (return . join) =<< testPipeline size size [cores]
+      times' <- return $ join times
+      let sysAndTimes = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
+      return $ Recorded cores size sysAndTimes
 
 main :: IO ()
 main =
   -- profileRequests
   -- testEachAction 10
   -- benchMain
-  testPipeline
-
+  -- putStrLn ("Microbenchmark num caps: " ++ (show numCapabilities)) >>
+  benchmarkGC >>
+  -- testPipeline 50 50 [1..4] >>
+  return ()
 
 benchMain :: IO ()
 benchMain = do

@@ -36,9 +36,11 @@ import Control.Arrow (first)
 import qualified Data.Map as M
 import System.CPUTime
 
+import Control.DeepSeq (NFData)
+
 
 execRequestsOhua ::
-       (DB.DB_Iface db, Typeable db)
+       (DB.DB_Iface db, Typeable db, NFData db)
     => Var KVStore
     -> Var db
     -> Var (Vector.Vector KVRequest)
@@ -133,7 +135,7 @@ execRequestsOhua cache db reqs
 
 
 execRequestsFunctional ::
-       (DB.DB_Iface db, Typeable db)
+       (DB.DB_Iface db, Typeable db, NFData db)
     => Vector.Vector KVRequest
     -> StateT (KVSState db) IO (Vector.Vector KVResponse)
 execRequestsFunctional = fmap fst . execRequestsFunctional0
