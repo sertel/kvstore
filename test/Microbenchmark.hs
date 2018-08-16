@@ -624,20 +624,20 @@ testPipeline numEntries numFields cores = do
                 -- flip evalStateT (0::Int) . --> needs runtime option -qm
                 -- runChanM .
                 -- runParIO .
-                 -- ( "sbfm-chan", do liftIO .
-                 --                    writeFile "stats" .
-                 --                    show .
-                 --                    pure @[] .
-                 --                    ("pipeline", ) . map (first show) . Map.toList <=<
-                 --                    sbfmWritePipeline runChanM )
-                -- ,
-                -- FIXME fails with "thread blocked indefinitely on an MVar operation"
-                 ( "sbfm-par", do liftIO .
+                 ( "sbfm-chan", do liftIO .
                                     writeFile "stats" .
                                     show .
                                     pure @[] .
                                     ("pipeline", ) . map (first show) . Map.toList <=<
-                                    sbfmWritePipeline runParIO )
+                                    sbfmWritePipeline runChanM )
+                -- ,
+                -- FIXME fails with "thread blocked indefinitely on an MVar operation"
+                 -- ( "sbfm-par", do liftIO .
+                 --                    writeFile "stats" .
+                 --                    show .
+                 --                    pure @[] .
+                 --                    ("pipeline", ) . map (first show) . Map.toList <=<
+                 --                    sbfmWritePipeline runParIO )
                  -- ("fbm", fbmWritePipeline)
                 ]
         pure times
@@ -692,15 +692,22 @@ testPipeline numEntries numFields cores = do
 
 data Recorded = Recorded { cores :: Int, size :: Int , sysAndTimes :: HM.HashMap String [Integer] } deriving Generic
 
+data GCBenchConfig = GCBenchConfig { minSize :: Int, maxSize :: Int, stepSize :: Int, minCores :: Int, maxCores :: Int } deriving Generic
+
 deriveJSON defaultOptions ''Recorded
+deriveJSON defaultOptions ''GCBenchConfig
 
 benchmarkGC :: IO ()
 benchmarkGC = do
-  results <- mapM runPipeline [100]--[10,20..100]
+  config <- AE.decode <$> BS.readFile "./gc-bench-config.json"
+  (GCBenchConfig minS maxS stepS minCores maxCores) <- case config of
+                Nothing -> putStrLn "Using default config!" >> (return $ GCBenchConfig 10 100 10 1 4)
+                Just c -> return c
+  results <- mapM (runPipeline minCores maxCores) [minS,(minS+stepS)..maxS]
   BS.writeFile "results.json" $ AE.encode results
   return ()
   where
-    runPipeline size = forM [1..4] $ runPipelineForCore size
+    runPipeline minCores maxCores size = forM [minCores..maxCores] $ runPipelineForCore size
     runPipelineForCore size cores = do
       putStrLn $ "Running config: #cores = " ++ (show cores) ++ " size = " ++ (show size)
       times <- replicateM 2 $ (return . join) =<< testPipeline size size [cores]
