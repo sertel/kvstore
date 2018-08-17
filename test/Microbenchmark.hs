@@ -690,27 +690,28 @@ testPipeline numEntries numFields cores = do
         pure ((sys, time), db)
 
 
-data Recorded = Recorded { cores :: Int, size :: Int , sysAndTimes :: HM.HashMap String [Integer] } deriving Generic
-
-data GCBenchConfig = GCBenchConfig { minSize :: Int, maxSize :: Int, stepSize :: Int, minCores :: Int, maxCores :: Int } deriving Generic
-
+data Recorded = Recorded { cores :: Int, size :: Int ,
+                           sysAndTimes :: HM.HashMap String [Integer] } deriving Generic
+data GCBenchConfig = GCBenchConfig { minSize :: Int, maxSize :: Int, stepSize :: Int,
+                                     minCores :: Int, maxCores :: Int,
+                                     reps :: Int } deriving Generic
 deriveJSON defaultOptions ''Recorded
 deriveJSON defaultOptions ''GCBenchConfig
 
 benchmarkGC :: IO ()
 benchmarkGC = do
   config <- AE.decode <$> BS.readFile "./gc-bench-config.json"
-  (GCBenchConfig minS maxS stepS minCores maxCores) <- case config of
-                Nothing -> putStrLn "Using default config!" >> (return $ GCBenchConfig 10 100 10 1 4)
+  (GCBenchConfig minS maxS stepS minCores maxCores reps) <- case config of
+                Nothing -> putStrLn "Using default config!" >> (return $ GCBenchConfig 10 100 10 1 4 2)
                 Just c -> return c
-  results <- mapM (runPipeline minCores maxCores) [minS,(minS+stepS)..maxS]
+  results <- mapM (runPipeline minCores maxCores reps) [minS,(minS+stepS)..maxS]
   BS.writeFile "results.json" $ AE.encode results
   return ()
   where
-    runPipeline minCores maxCores size = forM [minCores..maxCores] $ runPipelineForCore size
-    runPipelineForCore size cores = do
+    runPipeline minCores maxCores reps size = forM [minCores..maxCores] $ runPipelineForCore size reps
+    runPipelineForCore size reps cores = do
       putStrLn $ "Running config: #cores = " ++ (show cores) ++ " size = " ++ (show size)
-      times <- replicateM 2 $ (return . join) =<< testPipeline size size [cores]
+      times <- replicateM reps $ (return . join) =<< testPipeline size size [cores]
       times' <- return $ join times
       let sysAndTimes = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
       return $ Recorded cores size sysAndTimes
