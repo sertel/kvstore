@@ -619,7 +619,8 @@ testPipeline numEntries numFields cores = do
                 (uncurry $ runSystem cores tables)
                 --,
                 [
-                -- ("pure", pureWritePipeline)
+                 ("pure", pureWritePipeline)
+                ,
                 -- Options:
                 -- flip evalStateT (0::Int) . --> needs runtime option -qm
                 -- runChanM .
