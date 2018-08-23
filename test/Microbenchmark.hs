@@ -41,6 +41,7 @@ import Kvstore.KVSTypes
 import Kvstore.Serialization
 import Kvstore.InputOutput (store)
 import Data.Dynamic2
+import Data.Maybe (fromJust,fromMaybe)
 
 import qualified Monad.StreamsBasedExplicitAPI as SBFM
 import Control.Monad.Stream (MonadStream)
@@ -503,106 +504,31 @@ fbmWritePipeline tables =
     storeIdx = 2
     encIdx = 3
 
--- configs that work:
--- genTables = 300
--- keyCount = 100
--- fieldCount = 100
--- at a latency of 600000 I get:
--- ("pipeline/store-table",    27998186667),
--- ("prepare-store/compress",  31196806667),
--- ("prepare-store/encrypt",   13689993333),
--- ("prepare-store/serialize", 30687693333)
--- still I barely get a speedup of about 2x for FBM:
--- Running fbm with ... --> numCores: 1
--- 10125
--- Running fbm with ... --> numCores: 4
--- 7629
--- Running fbm with ... --> numCores: 3
--- 6988
--- Running fbm with ... --> numCores: 2
--- 7881
---
--- SBFM (MVars) does quite good though:
---
--- Running sbfm with ... --> numCores: 1
--- 13769
--- Running sbfm with ... --> numCores: 4
--- 8343
--- Running sbfm with ... --> numCores: 3
--- 7076
--- Running sbfm with ... --> numCores: 2
--- 6523
--- ===> However, I never got a 3-fold speedup!
--- (Why is the exec time 3s shorter in FBM?)
---
--- some more tries:
---
--- Running fbm with ... --> numCores: 1
--- 11928
--- Running fbm with ... --> numCores: 4
--- 6800
--- Running fbm with ... --> numCores: 3
--- 6784
--- Running fbm with ... --> numCores: 2
--- 7417
---
--- Running fbm with ... --> numCores: 1
--- 11647
--- Running fbm with ... --> numCores: 4
--- 7122
--- Running fbm with ... --> numCores: 3
--- 6820
--- Running fbm with ... --> numCores: 2
--- 6889
+runners = [ ("pure", pureWritePipeline)
+            -- Options:
+            -- flip evalStateT (0::Int) . --> needs runtime option -qm
+            -- runChanM .
+            -- runParIO .
+           , ( "sbfm-chan", do liftIO .
+                                 writeFile "stats" .
+                                 show .
+                                 pure @[] .
+                                 ("pipeline", ) . map (first show) . Map.toList <=<
+                                 sbfmWritePipeline runChanM )
+            -- ,
+            -- FIXME fails with "thread blocked indefinitely on an MVar operation"
+           , ( "sbfm-par", do liftIO .
+                                 writeFile "stats" .
+                                 show .
+                                 pure @[] .
+                                 ("pipeline", ) . map (first show) . Map.toList <=<
+                                 sbfmWritePipeline runParIO )
+           , ("fbm", fbmWritePipeline)
+           , ("default", pureWritePipeline)
+           ]
 
-
--- ---> reducing the latency to 500 gives me the following results:
--- Running fbm with ... --> numCores: 1
--- 8231
--- Running fbm with ... --> numCores: 4
--- 4850
--- Running fbm with ... --> numCores: 3
--- 4653
--- Running fbm with ... --> numCores: 2
--- 4322
-
--- Running sbfm with ... --> numCores: 1
--- 8721
--- Running sbfm with ... --> numCores: 4
--- 4639
--- Running sbfm with ... --> numCores: 3
--- 3797
--- Running sbfm with ... --> numCores: 2
--- 4634
-
--- --> both do equally well, but FBM is better without the delay for some reason!
-
----------------------
---
--- genTables = 600
--- keyCount = 100
--- fieldCount = 50
---
--- genTables = 1200
--- keyCount = 50
--- fieldCount = 50
--- not as good as above but still work:
--- genTables = 20
--- keyCount = 300
--- fieldCount = 400
-
--- configs that do not work as well:
--- genTables = 100
--- keyCount = 100
--- fieldCount = 100
---
--- genTables = 50
--- keyCount = 100
--- fieldCount = 100
---
-
-testPipeline :: Int -> Int -> [Int] -> IO [[(String, Integer)]]
-testPipeline numEntries numFields cores = do
+testPipeline :: Int -> Int -> [Int] -> String -> IO [Integer]
+testPipeline numEntries numFields cores benchRunner = do
   setStdGen (mkStdGen 20)
   -- putStrLn " --> Generating tables ..."
   tables <- evalRandIO $ genTables 300
@@ -613,35 +539,9 @@ testPipeline numEntries numFields cores = do
   where
     runTest tables cores = do
         setNumCapabilities cores
-        (times, dbs) <-
-            unzip <$>
-            mapM
-                (uncurry $ runSystem cores tables)
-                --,
-                [
-                 ("pure", pureWritePipeline)
-                ,
-                -- Options:
-                -- flip evalStateT (0::Int) . --> needs runtime option -qm
-                -- runChanM .
-                -- runParIO .
-                 ( "sbfm-chan", do liftIO .
-                                    writeFile "stats" .
-                                    show .
-                                    pure @[] .
-                                    ("pipeline", ) . map (first show) . Map.toList <=<
-                                    sbfmWritePipeline runChanM )
-                -- ,
-                -- FIXME fails with "thread blocked indefinitely on an MVar operation"
-                 -- ( "sbfm-par", do liftIO .
-                 --                    writeFile "stats" .
-                 --                    show .
-                 --                    pure @[] .
-                 --                    ("pipeline", ) . map (first show) . Map.toList <=<
-                 --                    sbfmWritePipeline runParIO )
-                 -- ("fbm", fbmWritePipeline)
-                ]
-        pure times
+        (execTime, dbs) <-
+            runSystem cores tables $ fromJust $ lookup benchRunner runners
+        pure execTime
       -- let namedDbs = zip (map fst times) dbs
       -- let pureDB = head dbs
       -- forM_ (tail namedDbs) $ \(name, db) ->
@@ -666,7 +566,7 @@ testPipeline numEntries numFields cores = do
         rInt
     getDB = readIORef . _dbRef . _storage
     forceDB state = getDB state >>= forceA
-    runSystem numCores tables sys f = do
+    runSystem numCores tables f = do
         -- putStrLn $ "num requests: " ++ (show $ length tables)
         s0 <- initState True
         -- let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 12000000 }
@@ -688,34 +588,39 @@ testPipeline numEntries numFields cores = do
         let time = t1 - t0
         -- hPrintf stderr "%v\n" (show time)
         db <- getDB s
-        pure ((sys, time), db)
+        pure (time, db)
 
 
-data Recorded = Recorded { cores :: Int, size :: Int ,
-                           sysAndTimes :: HM.HashMap String [Integer] } deriving Generic
-data GCBenchConfig = GCBenchConfig { minSize :: Int, maxSize :: Int, stepSize :: Int,
+data Recorded = Recorded { cores :: Int, size :: Int , benchmark :: String,
+                           execTimes :: [Integer] } deriving Generic
+data GCBenchConfig = GCBenchConfig { runner :: String,
+                                     minSize :: Int, maxSize :: Int, stepSize :: Int,
                                      minCores :: Int, maxCores :: Int,
-                                     reps :: Int } deriving Generic
+                                     reps :: Int } deriving (Generic, Show)
+
 deriveJSON defaultOptions ''Recorded
 deriveJSON defaultOptions ''GCBenchConfig
 
 benchmarkGC :: IO ()
 benchmarkGC = do
-  config <- AE.decode <$> BS.readFile "./gc-bench-config.json"
-  (GCBenchConfig minS maxS stepS minCores maxCores reps) <- case config of
-                Nothing -> putStrLn "Using default config!" >> (return $ GCBenchConfig 10 100 10 1 4 2)
-                Just c -> return c
-  results <- mapM (runPipeline minCores maxCores reps) [minS,(minS+stepS)..maxS]
-  BS.writeFile "results.json" $ AE.encode results
+  configs  <- fromMaybe
+                  [GCBenchConfig "default" 10 100 10 1 4 2]
+                  <$> AE.decode <$> BS.readFile "./gc-bench-config.json"
+  putStrLn $ "benchmark configs: " ++ (show configs)
+  results <- mapM runPipeBenchmark configs
+  BS.writeFile "results.json" $ AE.encode $ join results
   return ()
   where
-    runPipeline minCores maxCores reps size = forM [minCores..maxCores] $ runPipelineForCore size reps
-    runPipelineForCore size reps cores = do
+    runPipeBenchmark config@(GCBenchConfig { minSize=minS, maxSize=maxS, stepSize=stepS }) =
+      mapM (runPipeline config) [minS,(minS+stepS)..maxS]
+    runPipeline config@(GCBenchConfig { minCores=minCores, maxCores=maxCores }) size =
+      forM [minCores..maxCores] $ runPipelineForCore config size
+    runPipelineForCore config@(GCBenchConfig { runner=runner, reps=reps }) size cores = do
       putStrLn $ "Running config: #cores = " ++ (show cores) ++ " size = " ++ (show size)
-      times <- replicateM reps $ (return . join) =<< testPipeline size size [cores]
+      times <- replicateM reps $ testPipeline size size [cores] runner
       times' <- return $ join times
-      let sysAndTimes = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
-      return $ Recorded cores size sysAndTimes
+      -- let times = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
+      return $ Recorded cores size runner times'
 
 main :: IO ()
 main =
@@ -724,7 +629,7 @@ main =
   -- benchMain
   -- putStrLn ("Microbenchmark num caps: " ++ (show numCapabilities)) >>
   benchmarkGC >>
-  -- testPipeline 50 50 [1..4] >>
+  -- testPipeline 50 50 [1..4] "sbfm-chan" >>
   return ()
 
 benchMain :: IO ()
