@@ -13,7 +13,20 @@ DATA_FILE = 'gc-bench.json'
 # BASEPATH = ''
 # DATA_FILE = 'results.json'
 
-normalize_over=1
+RESULTDIR = 'plotting/plots/'
+
+
+benchmark="sbfm-chan"
+
+# normalizerBench="pure"
+# normalizerCores=1
+# normalizerAxisMsg="Speedup over sequential"
+# RESULTFILE = 'gc-bench-sequential.pdf'
+
+normalizerBench="sbfm-chan"
+normalizerCores=1
+normalizerAxisMsg="Speedup over single core (Ohua)"
+RESULTFILE = 'gc-bench-ohua.pdf'
 
 def get_data():
     return json.load(open(BASEPATH + DATA_FILE))
@@ -26,25 +39,37 @@ def prepare_data(data):
     # print(flattened)
     # flattened = reduce(lambda x,y: x.extend(y), data) <-- does not work! don't know why!
     # print(flattened)
-    sorted_data = sorted(flattened, key=lambda x: x["cores"])
-    grouped_by_version = itertools.groupby(sorted_data,lambda x: x["cores"])
-    d = {
-        cores : {
-            record["size"] : np.mean(record["sysAndTimes"]["sbfm-chan"])
-            for record in records
+    sorted_data = sorted(flattened, key=lambda x: x["benchmark"])
+    benchmarks = itertools.groupby(sorted_data,lambda x: x["benchmark"])
+
+    def group_records(recs):
+        sorted_data = sorted(recs, key=lambda x: x["cores"])
+        grouped_by_version = itertools.groupby(sorted_data,lambda x: x["cores"])
+        return grouped_by_version
+
+    benchs = {
+        benchmark : {
+            cores : {
+                record["size"] : np.mean(record["execTimes"])
+                for record in records
+            }
+            for cores,records in group_records(recs)
         }
-        for cores,records in grouped_by_version
+        for benchmark,recs in benchmarks
     }
     # print(pd.DataFrame(d))
+    selectedBench = benchs[benchmark]
+    normBench = benchs[normalizerBench]
+
     d1 = {
         str(name) : {
-            i : d[normalize_over][i]/v
+            i : benchs[normalizerBench][normalizerCores][i]/v
             for i,v in value.items()
         }
-        for name,value in d.items()
+        for name,value in selectedBench.items()
     }
     # print(pd.DataFrame(d1))
-    d1['size'] = { k: k for k,_ in d[1].items() }
+    d1['size'] = { k: k for k,_ in selectedBench[1].items() }
     d1.pop('1')
     return d1
 
@@ -66,7 +91,7 @@ def plot():
     gg = ggplot2.ggplot(r_melted) + \
          ggplot2.aes_string(x='size', y='value', colour="cores") + \
          ggplot2.geom_point(size=3) + \
-         ggplot2.labs(x="# entries and fields per table", y="speedup over single core") + \
+         ggplot2.labs(x="# entries and fields per table", y=normalizerAxisMsg) + \
          ggplot2.theme_grey(base_size = 15) + \
          ggplot2.theme(**{'legend.position' : "right",
                           'plot.background': ggplot2.element_rect(fill="transparent", colour="NA")})
@@ -75,4 +100,4 @@ def plot():
 
 if __name__ == '__main__':
     gg = plot()
-    gg.save("plotting/plots/gc-bench.pdf", width=8, height=4, bg="transparent")
+    gg.save(RESULTDIR + RESULTFILE, width=8, height=4, bg="transparent")
