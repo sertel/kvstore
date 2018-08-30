@@ -9,7 +9,7 @@ import rpy2.robjects.lib.ggplot2 as ggplot2
 import rpy2.robjects
 
 BASEPATH = 'plotting/data/'
-DATA_FILE = 'gc-bench.json'
+DATA_FILE = 'gc-bench-zih.json'
 # BASEPATH = ''
 # DATA_FILE = 'results.json'
 
@@ -71,6 +71,8 @@ def prepare_data(data):
     # print(pd.DataFrame(d1))
     d1['size'] = { k: k for k,_ in selectedBench[1].items() }
     d1.pop('1')
+    d1.pop('2')
+    d1.pop('4')
     return d1
 
 def prepare_frame(data):

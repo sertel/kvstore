@@ -72,6 +72,9 @@ import Text.Printf
 
 import GHC.Generics
 
+import Options.Applicative
+import Data.Semigroup ((<>))
+
 
 forceA :: (NFData a, Applicative f) => a -> f a
 forceA a = a `deepseq` pure a
@@ -601,14 +604,14 @@ data GCBenchConfig = GCBenchConfig { runner :: String,
 deriveJSON defaultOptions ''Recorded
 deriveJSON defaultOptions ''GCBenchConfig
 
-benchmarkGC :: IO ()
-benchmarkGC = do
+benchmarkGC :: BenchParams -> IO ()
+benchmarkGC (BenchParams configFile) = do
   configs  <- fromMaybe
                   [GCBenchConfig "default" 10 100 10 1 4 2]
-                  <$> AE.decode <$> BS.readFile "./gc-bench-config.json"
+                  <$> AE.decode <$> BS.readFile configFile
   putStrLn $ "benchmark configs: " ++ (show configs)
   results <- mapM runPipeBenchmark configs
-  BS.writeFile "results.json" $ AE.encode $ join results
+  BS.writeFile (configFile ++"-results.json") $ AE.encode $ join results
   return ()
   where
     runPipeBenchmark config@(GCBenchConfig { minSize=minS, maxSize=maxS, stepSize=stepS }) =
@@ -622,15 +625,33 @@ benchmarkGC = do
       -- let times = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
       return $ Recorded cores size runner times'
 
+data BenchParams = BenchParams { file :: String }
+
+cmdArgParser :: Parser BenchParams
+cmdArgParser = BenchParams
+              <$> strOption ( long "file"
+                           <> metavar "f"
+                           <> help "Benchmark config file" )
+
+
 main :: IO ()
 main =
+  hSetBuffering stdout LineBuffering >> -- needed for running @ ZIH
   -- profileRequests
   -- testEachAction 10
   -- benchMain
   -- putStrLn ("Microbenchmark num caps: " ++ (show numCapabilities)) >>
+  execParser opts >>=
   benchmarkGC >>
   -- testPipeline 50 50 [1..4] "sbfm-chan" >>
   return ()
+  where
+    opts = info (cmdArgParser <**> helper)
+      ( fullDesc
+     <> progDesc "Run the write-pipeline against the supplied config."
+     <> header "Pipeline MicroBenchmark" )
+
+
 
 benchMain :: IO ()
 benchMain = do
