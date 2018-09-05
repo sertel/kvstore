@@ -1,9 +1,10 @@
 {-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
-module MBConfig where
+module MBConfig (BatchConfig(..), def) where
 
 import Data.Aeson
 import Data.Aeson.TH
 import Versions
+import Data.Word
 
 data BatchConfig = BatchConfig
   { keyCount :: Int
@@ -15,8 +16,29 @@ data BatchConfig = BatchConfig
   , systemVersion :: Version
   , numFields :: Int
   , requestSelection :: Maybe Int
+  , preloadCache :: Bool
+  , readDelay :: Word64
+  , writeDelay :: Word64
   }
 
 
 deriveJSON defaultOptions ''Version
 deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''BatchConfig
+
+
+def :: BatchConfig
+def =
+    BatchConfig
+        { keyCount = 100
+        , batchCount = 30
+        , batchSize = 30
+        , useEncryption = False
+        , numTables = 10
+        , threadCount = 1
+        , systemVersion = Functional
+        , numFields = 5
+        , requestSelection = Nothing
+        , preloadCache = False
+        , readDelay = 0
+        , writeDelay = 0
+        }

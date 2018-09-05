@@ -13,5 +13,6 @@ packages:
   extra-dep: true
 extra-deps:
 - thrift-0.10.0
+- named-0.2.0.0
 resolver: lts-10.4
 allow-newer: true

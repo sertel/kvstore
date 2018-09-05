@@ -1,47 +1,43 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings,
-  FlexibleContexts, PartialTypeSignatures, RecordWildCards, TypeApplications #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE DeriveAnyClass    #-}
+  FlexibleContexts, PartialTypeSignatures, RecordWildCards, TypeApplications,
+  TemplateHaskell, ImplicitParams, TupleSections, RankNTypes, DeriveGeneric,
+  DeriveAnyClass, DataKinds, TypeOperators, OverloadedLabels, ViewPatterns #-}
 
-import Control.Lens
-import Control.DeepSeq
-import Control.Monad
-import Control.Monad.State
-import Control.Arrow (first, second, (***), (&&&))
+import Control.Arrow ((&&&), (***), first, second)
 import Control.Concurrent (threadDelay)
-import System.Random
-import Data.Void
 import Control.DeepSeq
 import Control.Exception
-import System.Exit
-import System.IO
-import System.Mem
-import System.CPUTime
-
-import GHC.Conc.Sync (setNumCapabilities,numCapabilities)
-
+import Control.Lens
+import Control.Monad
+import Control.Monad.Random.Strict
+import Control.Monad.State
 import Data.Aeson as AE
 import Data.Aeson.TH as AE
 import qualified Data.ByteString.Lazy as BS
+import Data.Dynamic2
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as Set
-import qualified Data.Map as Map
-import qualified Data.Text.Lazy as T
-import Control.Monad.Random.Strict
 import Data.IORef
 import Data.List
+import qualified Data.Map as Map
+import qualified Data.Text.Lazy as T
 import Data.Time.Clock.POSIX
 import qualified Data.Vector as V
+import Data.Void
+import GHC.Conc.Sync (numCapabilities, setNumCapabilities)
 import Kvservice_Types
+import Kvstore.InputOutput (store, load)
 import Kvstore.KVSTypes
 import Kvstore.Serialization
-import Kvstore.InputOutput (store)
-import Data.Dynamic2
 import Data.Maybe (fromJust,fromMaybe)
+import System.CPUTime
+import System.Exit
+import System.IO
+import System.Mem
+import System.Random
+import Named
+import Named.Internal (Param(Param))
+import Data.Word
 
 import qualified Monad.StreamsBasedExplicitAPI as SBFM
 import Control.Monad.Stream (MonadStream)
@@ -59,6 +55,7 @@ import qualified Kvstore.Ohua.FBM.RequestHandling as FBM
 import qualified Data.StateElement as FBM
 
 import Kvstore.Ohua.RequestHandling (storeTable)
+import DB_Iface (DB_Iface)
 
 import Requests
 import ServiceConfig
@@ -112,6 +109,11 @@ fieldTemplate f = "field-" ++ show f
 keyTemplate k = "key-" ++ show k
 
 tableTemplate t = "table-" ++ show t
+
+
+named :: name :! a -> Param (name :! a)
+named = Param
+{-# INLINE named #-}
 
 data RangeGen =
     RangeGen Int
@@ -239,9 +241,11 @@ showState KVSState {_cache = cache, _storage = MockDB dbRef _ _} = do
     db <- readIORef dbRef
     return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
+defaultFieldCount = 10
+
 defaultBenchmarkState =
     BenchmarkState
-        { _fieldCount = 10
+        { _fieldCount = defaultFieldCount
         , _fieldSelection = RangeGen 0 10 $ mkStdGen 0
         , _valueSizeGen = RangeGen 5 10 $ mkStdGen 0
         , _tableCount = 20
@@ -253,27 +257,15 @@ defaultBenchmarkState =
         }
   -- traceM "recur
 
-loadDB useEncryption tc keyCount = do
-    s <- initState useEncryption
-  -- fill the db first
-    requests <-
-        fmap V.concat $
-        forM [0 .. tc - 1] $ \i ->
-            evalStateT
-                (workload keyCount)
-                defaultBenchmarkState
-                    { _operationSelection = RangeGen 0 0 $ mkStdGen 0 -- (INSERT only)
-                    , _tableSelection = RangeGen i i $ mkStdGen 0
-                    }
-    -- tracem "requests (INSERT):"
-    -- mapM (\i -> traceM $ show i ++ "\n" ) requests
-    (responses, s'@KVSState {_storage = (MockDB db _ _)}) <-
-        flip runStateT s $ ?execRequests requests
-  -- adjust minLatency for benchmark requests
-    content <- readIORef db
-    forceA_ content
-    newDB <- make db 20 1000000000000000000000000
-    return s' {_storage = newDB}
+loadDB ::
+       "numTables" :! Int
+    -> "numKeys" :! Int
+    -> "numFields" :? Int
+    -> StateT (KVSState MockDB) IO ()
+loadDB (named -> tc) (named -> keyCount) (argDef #numFields defaultFieldCount -> numFields) = do
+    tables <-
+        liftIO $ evalRandIO $ genTables ! keyCount ! #numFields numFields ! tc
+    pureWritePipeline tables
   -- traceM "state after init:"
   -- traceM =<< showState s'
   -- traceM "done with insert."
@@ -295,20 +287,27 @@ currentTimeMillis = round . (* 1000) <$> getPOSIXTime
 -- then run some requests
 runRequests ::
        (?execRequests :: ExecReqFn)
-    => Int
+    => "operationCount" :! Int
+    -> "preloadCache" :! Bool
     -> BenchmarkState RangeGen
     -> StateT (KVSState MockDB) IO Integer
-runRequests operationCount bmState = do
+runRequests (Arg operationCount) (Arg preload) bmState = do
+    liftIO $ traceEventIO "Building requests"
     (requests, _) <- liftIO $ runStateT (workload operationCount) bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     forceA_ requests
+    when preload $ liftIO (traceEventIO "Preloading cache") >> doPreload requests
+    liftIO $ traceEventIO "Forcing GC"
     liftIO performGC
+    liftIO $ traceEventIO "Starting measurement"
     start <- liftIO currentTimeMillis
     responses <- ?execRequests requests
+    liftIO $ traceEventIO "Forcing results"
     forceA_ responses
     --() <- join $ gets forceA_ -- forces the state
     stop <- liftIO currentTimeMillis
+    liftIO $ traceEventIO "Finished measurement"
     let execTime = stop - start
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
@@ -317,7 +316,18 @@ runRequests operationCount bmState = do
       error "wrong number of responses"
     return execTime
 
+doPreload :: DB_Iface db => V.Vector KVRequest -> StateT (KVSState db) IO ()
+doPreload requests = mapM_ (load >=> maybe (pure ()) insertToCache) tables
+  where
+    tables = nub $ V.toList $ fmap kVRequest_table requests
+    insertToCache = (cache %=) . uncurry HM.insert
+
 defaultTableCount = 20
+
+setDelay :: MonadState (KVSState MockDB) m => "readDelay" :! Word64 -> "writeDelay" :! Word64 -> m ()
+setDelay (Arg readDelay) (Arg writeDelay) =
+    modify $ \s@KVSState {_storage = MockDB db _ _} ->
+        s {_storage = MockDB db readDelay writeDelay}
 
 
 runMultipleBatches ::
@@ -329,12 +339,29 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                                , numTables
                                , numFields
                                , requestSelection
+                               , preloadCache
+                               , readDelay
+                               , writeDelay
                                } = do
-    s <- loadDB useEncryption numTables keyCount
-    let bmState = reqBenchmarkState keyCount numTables numFields requestSelection
+    traceEventIO "Starting benchmark"
+    let bmState =
+            reqBenchmarkState keyCount numTables numFields requestSelection
+    s <- initState useEncryption
     execTimes <-
-        flip evalStateT s $
-        replicateM batchCount (runRequests batchSize bmState)
+        flip evalStateT s $ do
+            liftIO $ traceEventIO "Loading Database"
+            loadDB ! #numTables numTables
+                   ! #numKeys keyCount
+                   ! #numFields numFields
+            liftIO $ traceEventIO "Setting delay"
+            setDelay ! #readDelay readDelay
+                     ! #writeDelay writeDelay
+            liftIO $ traceEventIO "Done loading!"
+            replicateM
+                batchCount
+                (runRequests ! #operationCount batchSize
+                             ! #preloadCache preloadCache
+                             $ bmState)
     let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
@@ -358,7 +385,7 @@ avg l = sum l `div` toInteger (length l)
 
 testEachAction replications = do
     results <-
-        sequence $ replicate replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
+        replicateM replications runTest :: IO [Map.Map String (Map.Map _ Integer)]
     let stats =
             fmap
                 (fmap avg)
@@ -382,10 +409,9 @@ testEachAction replications = do
                 liftIO $
                     atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
                 pure res
-        s <-
-            let ?execRequests = KVS.execRequestsFunctional
-             in loadDB True 10 100
+        s <- initState True
         flip runStateT s $ do
+            loadDB ! #numKeys 10 ! #numTables 100 ! defaults
             let ?execRequests = execWithCollectStats "insert"
              in insertEntry "table-0" "key-0" "field-0" "value-0"
             let ?execRequests = execWithCollectStats "read"
@@ -399,14 +425,12 @@ testEachAction replications = do
 
 profileRequests :: IO ()
 profileRequests = do
-    s <-
-        let ?execRequests = KVS.execRequestsFunctional
-         in loadDB True numTables keyCount
+    s <- initState True
+    s' <- flip execStateT s $ loadDB ! #numTables numTables ! #numKeys keyCount ! #numFields fieldCount
     t0 <- currentTimeMillis
     stats <-
-        flip evalStateT s $
-        sequence $
-        replicate 5 $ do
+        flip evalStateT s' $
+        replicateM 5 $ do
             (requests, _) <-
                 liftIO $ runStateT (workload operationCount) bmState
             -- liftIO $ evaluate $ force requests
@@ -530,34 +554,15 @@ runners = [ ("pure", pureWritePipeline)
            , ("default", pureWritePipeline)
            ]
 
-testPipeline :: Int -> Int -> [Int] -> String -> IO [Integer]
-testPipeline numEntries numFields cores benchRunner = do
-  setStdGen (mkStdGen 20)
-  -- putStrLn " --> Generating tables ..."
-  tables <- evalRandIO $ genTables 300
-  forceA_ tables
-  -- liftIO $ evaluate $ force tables
-  -- putStrLn " --> done."
-  mapM (runTest tables) cores
+genTables ::
+       MonadRandom m
+    => "numKeys" :! Int
+    -> "numFields" :! Int
+    -> "numTables" :! Int
+    -> m [(T.Text, Table)]
+genTables (Arg keyCount) (Arg fieldCount) (Arg tableCount) =
+    replicateM tableCount genTable
   where
-    runTest tables cores = do
-        setNumCapabilities cores
-        (execTime, dbs) <-
-            runSystem cores tables $ fromJust $ lookup benchRunner runners
-        pure execTime
-      -- let namedDbs = zip (map fst times) dbs
-      -- let pureDB = head dbs
-      -- forM_ (tail namedDbs) $ \(name, db) ->
-      --   unless (db == pureDB) $ printf "Database for %v is unequal to pure database\n" name
-      -- let variants = length (nub dbs)
-      -- unless (variants == 1) $ error $ printf "Inequality in databases: %d versions" variants
-    rInt :: MonadRandom m => m Int
-    rInt = getRandom
-    -- keyCount = 20
-    -- fieldCount = 20
-    keyCount = numEntries
-    fieldCount = numFields
-    genTables = flip replicateM genTable
     genTable =
         curry ((T.pack . tableTemplate) *** HM.fromList) <$> rInt <*>
         replicateM keyCount genKVPair
@@ -567,9 +572,42 @@ testPipeline numEntries numFields cores benchRunner = do
     genFields =
         curry ((T.pack . fieldTemplate) *** (T.pack . valueTemplate)) <$> rInt <*>
         rInt
-    getDB = readIORef . _dbRef . _storage
-    forceDB state = getDB state >>= forceA
-    runSystem numCores tables f = do
+    rInt :: MonadRandom m => m Int
+    rInt = getRandom
+
+testPipeline ::
+        "numEntries" :! Int
+     -> "numFields" :! Int
+     -> "cores" :! [Int]
+     -> String
+     -> IO [Integer]
+testPipeline (Arg numEntries) (Arg numFields) (Arg cores) benchRunner = do
+  setStdGen (mkStdGen 20)
+  -- putStrLn " --> Generating tables ..."
+  tables <- evalRandIO $ genTables ! #numTables 300
+                                   ! #numKeys numEntries
+                                   ! #numFields numFields
+  forceA_ tables
+  -- liftIO $ evaluate $ force tables
+  -- putStrLn " --> done."
+  mapM (runTest tables) cores
+  where
+    runTest tables cores = do
+        setNumCapabilities cores
+        (execTime, _dbs) <-
+            runSystem cores tables $ fromJust $ lookup benchRunner runners
+        pure execTime
+      -- let namedDbs = zip (map fst times) dbs
+      -- let pureDB = head dbs
+      -- forM_ (tail namedDbs) $ \(name, db) ->
+      --   unless (db == pureDB) $ printf "Database for %v is unequal to pure database\n" name
+      -- let variants = length (nub dbs)
+      -- unless (variants == 1) $ error $ printf "Inequality in databases: %d versions" variants
+    -- keyCount = 20
+    -- fieldCount = 20
+    getDB = liftIO . readIORef . _dbRef . _storage
+    forceDB = getDB >=> forceA_
+    runSystem _numCores tables f = do
         -- putStrLn $ "num requests: " ++ (show $ length tables)
         s0 <- initState True
         -- let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 12000000 }
@@ -578,8 +616,6 @@ testPipeline numEntries numFields cores benchRunner = do
         -- putStrLn $ " --> numCores: " ++ (show numCores)
         -- hFlush stderr
         -- just to create a pattern in the trace
-        liftIO performGC
-        liftIO performGC
         liftIO performGC
         t0 <- currentTimeMillis
         -- putStrLn $ " --> starting computation: " ++ (show t0)
@@ -594,36 +630,53 @@ testPipeline numEntries numFields cores benchRunner = do
         pure (time, db)
 
 
-data Recorded = Recorded { cores :: Int, size :: Int , benchmark :: String,
-                           execTimes :: [Integer] } deriving Generic
-data GCBenchConfig = GCBenchConfig { runner :: String,
-                                     minSize :: Int, maxSize :: Int, stepSize :: Int,
-                                     minCores :: Int, maxCores :: Int,
-                                     reps :: Int } deriving (Generic, Show)
+data Recorded = Recorded
+    { cores :: Int
+    , size :: Int
+    , benchmark :: String
+    , execTimes :: [Integer]
+    } deriving (Generic, Show)
+
+data GCBenchConfig = GCBenchConfig
+    { runner :: String
+    , minSize :: Int
+    , maxSize :: Int
+    , stepSize :: Int
+    , minCores :: Int
+    , maxCores :: Int
+    , reps :: Int
+    } deriving (Generic, Show)
 
 deriveJSON defaultOptions ''Recorded
 deriveJSON defaultOptions ''GCBenchConfig
 
 benchmarkGC :: BenchParams -> IO ()
 benchmarkGC (BenchParams configFile) = do
-  configs  <- fromMaybe
-                  [GCBenchConfig "default" 10 100 10 1 4 2]
-                  <$> AE.decode <$> BS.readFile configFile
-  putStrLn $ "benchmark configs: " ++ (show configs)
-  results <- mapM runPipeBenchmark configs
-  BS.writeFile (configFile ++"-results.json") $ AE.encode $ join results
-  return ()
+    configs <-
+        fromMaybe [GCBenchConfig "default" 10 100 10 1 4 2] . AE.decode <$>
+        BS.readFile configFile
+    putStrLn $ "benchmark configs: " ++ (show configs)
+    results <- mapM runPipeBenchmark configs
+    BS.writeFile (configFile ++ "-results.json") $ AE.encode $ join results
+    return ()
   where
-    runPipeBenchmark config@(GCBenchConfig { minSize=minS, maxSize=maxS, stepSize=stepS }) =
-      mapM (runPipeline config) [minS,(minS+stepS)..maxS]
-    runPipeline config@(GCBenchConfig { minCores=minCores, maxCores=maxCores }) size =
-      forM [minCores..maxCores] $ runPipelineForCore config size
-    runPipelineForCore config@(GCBenchConfig { runner=runner, reps=reps }) size cores = do
-      putStrLn $ "Running config: #cores = " ++ (show cores) ++ " size = " ++ (show size)
-      times <- replicateM reps $ testPipeline size size [cores] runner
-      times' <- return $ join times
+    runPipeBenchmark GCBenchConfig {..} =
+        mapM runPipeline [minSize,(minSize + stepSize) .. maxSize]
+      where
+        runPipeline size = forM [minCores .. maxCores] $ runPipelineForCore size
+        runPipelineForCore size cores = do
+            putStrLn $
+                "Running config: #cores = " ++
+                (show cores) ++ " size = " ++ (show size)
+            times <-
+                replicateM reps $
+                (testPipeline ! #numEntries size
+                              ! #numFields size
+                              ! #cores [cores])
+                    runner
+            times' <- return $ join times
       -- let times = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
-      return $ Recorded cores size runner times'
+            return $ Recorded cores size runner times'
 
 data BenchParams = BenchParams { file :: String }
 
@@ -639,7 +692,6 @@ main =
   hSetBuffering stdout LineBuffering >> -- needed for running @ ZIH
   -- profileRequests
   -- testEachAction 10
-  -- benchMain
   -- putStrLn ("Microbenchmark num caps: " ++ (show numCapabilities)) >>
   execParser opts >>=
   benchmarkGC >>
