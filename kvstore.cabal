@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c772dca4447ce96f8083b9614b1b77abdef0f5fca263db215263640cc2d32d47
+-- hash: afb211cc7a076c6231c9ff6f2c9b44b380578f71a1b247c8b21eeac5520f93d8
 
 name:           kvstore
 version:        0.1.0.0
@@ -132,6 +132,9 @@ executable microbench
       Crypto
       Requests
       ServiceConfig
+      Microbenchmark.Common
+      Microbenchmark.Pipeline
+      Microbenchmark.KVStore
   hs-source-dirs:
       test
   default-extensions: ScopedTypeVariables NamedFieldPuns OverloadedStrings FlexibleContexts RecordWildCards TypeApplications ImplicitParams TupleSections RankNTypes DeriveGeneric DataKinds TypeOperators ViewPatterns LambdaCase ConstraintKinds TypeFamilies GADTs
@@ -174,6 +177,9 @@ test-suite kvstore-test
       CorrectnessTests
       Crypto
       Microbenchmark
+      Microbenchmark.Common
+      Microbenchmark.KVStore
+      Microbenchmark.Pipeline
       Requests
       ServiceConfig
       Paths_kvstore
