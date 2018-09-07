@@ -38,10 +38,22 @@ data BenchType
   | Batches
 
 benchTypeParser :: Parser BenchType
-benchTypeParser = subparser
-  (command "profile" (info (Profile <$> profileTypeParser) idm)
-  <> command "pipeline" (info (Pipeline <$> cmdArgParser) idm)
-  <> command "batches" (info (pure Batches) idm))
+benchTypeParser =
+    hsubparser
+        (command
+             "profile"
+             (info
+                  (Profile <$> profileTypeParser)
+                  (progDesc
+                       "Fine grained profiling for individual requests and whole batches")) <>
+         command
+             "pipeline"
+             (info
+                  (Pipeline <$> cmdArgParser)
+                  (progDesc "Benchmark the isolated write pipeline")) <>
+         command
+             "batches"
+             (info (pure Batches) (progDesc "Benchmark the kvstore")))
 
 main :: IO ()
 main =

@@ -30,17 +30,19 @@ data ProfileType
 
 profileTypeParser :: Parser ProfileType
 profileTypeParser =
-    subparser
+    hsubparser
         (command
              "requests"
              (info
                   (Requests <$>
                    argument
                        auto
-                       (metavar "REPLICATIONS" <>
+                       (metavar "REPS" <>
                         help "Number of replications to use for profiling"))
-                  idm) <>
-         command "batch" (info (pure Batch) idm))
+                  (progDesc "Profile each request type individually")) <>
+         command
+             "batch"
+             (info (pure Batch) (progDesc "Profile an entire batch")))
 
 avg :: (Foldable f, Num i, Integral i) => f i -> i
 avg l = sum l `div` fromIntegral (length l)
@@ -57,7 +59,7 @@ testEachAction replications = do
     writeFile
         "stat-results"
         (show $
-         fmap (second (fmap (first show) . Map.toList)) $ Map.toList stats)
+         second (fmap (first show) . Map.toList) <$> Map.toList stats)
   where
     runTest = do
         statVar <- newIORef mempty
