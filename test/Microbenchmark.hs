@@ -1,43 +1,41 @@
-{-# LANGUAGE ScopedTypeVariables, NamedFieldPuns, OverloadedStrings,
-  FlexibleContexts, PartialTypeSignatures, RecordWildCards, TypeApplications,
-  TemplateHaskell, ImplicitParams, TupleSections, RankNTypes, DeriveGeneric,
-  DeriveAnyClass, DataKinds, TypeOperators, OverloadedLabels, ViewPatterns #-}
+{-# LANGUAGE PartialTypeSignatures, DeriveAnyClass,
+  OverloadedLabels, TemplateHaskell #-}
 
-import Control.Arrow ((&&&), (***), first, second)
-import Control.Concurrent (threadDelay)
+import Control.Arrow (first, second)
+import Control.Monad.Random
 import Control.DeepSeq
-import Control.Exception
 import Control.Lens
-import Control.Monad
-import Control.Monad.Random.Strict
-import Control.Monad.State
-import Data.Aeson as AE
+import Control.Monad.State (MonadState, StateT, evalStateT, get, runStateT, modify, execStateT)
+import Data.Aeson as AE hiding (Array)
 import Data.Aeson.TH as AE
 import qualified Data.ByteString.Lazy as BS
 import Data.Dynamic2
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as Set
 import Data.IORef
-import Data.List
+import Data.List (nub)
 import qualified Data.Map as Map
 import qualified Data.Text.Lazy as T
 import Data.Time.Clock.POSIX
 import qualified Data.Vector as V
-import Data.Void
-import GHC.Conc.Sync (numCapabilities, setNumCapabilities)
+import GHC.Conc.Sync (setNumCapabilities)
 import Kvservice_Types
 import Kvstore.InputOutput (store, load)
 import Kvstore.KVSTypes
 import Kvstore.Serialization
-import Data.Maybe (fromJust,fromMaybe)
+import Data.Maybe (fromJust,fromMaybe, catMaybes)
 import System.CPUTime
-import System.Exit
 import System.IO
 import System.Mem
-import System.Random
 import Named
 import Named.Internal (Param(Param))
 import Data.Word
+import Data.Foldable
+import Data.Semigroup ((<>))
+
+import Criterion
+import Criterion.Types (Measured(measTime))
+import Criterion.Measurement (measure, initializeTime)
 
 import qualified Monad.StreamsBasedExplicitAPI as SBFM
 import Control.Monad.Stream (MonadStream)
@@ -70,8 +68,9 @@ import Text.Printf
 import GHC.Generics
 
 import Options.Applicative
-import Data.Semigroup ((<>))
 
+
+type NamedTable = (T.Text, Table)
 
 forceA :: (NFData a, Applicative f) => a -> f a
 forceA a = a `deepseq` pure a
@@ -79,9 +78,10 @@ forceA a = a `deepseq` pure a
 forceA_ :: (NFData a, Applicative f) => a -> f ()
 forceA_ a = a `deepseq` pure ()
 
-instance RandomGen Void where
-  next g = (absurd g, g)
-  split g = (g, g)
+data Bounds a = Bounds ("lowerBound" :! a) ("upperBound" :! a)
+
+maxBounds :: Bounded a => Bounds a
+maxBounds = Bounds ! #lowerBound minBound ! #upperBound maxBound
 
 initState :: Bool -> IO (KVSState MockDB)
 initState useEncryption = do
@@ -102,12 +102,10 @@ initState useEncryption = do
             enc
             dec
 
+valueTemplate, fieldTemplate, keyTemplate, tableTemplate :: Show a => a -> String
 valueTemplate v = "value-" ++ show v
-
 fieldTemplate f = "field-" ++ show f
-
 keyTemplate k = "key-" ++ show k
-
 tableTemplate t = "table-" ++ show t
 
 
@@ -115,156 +113,122 @@ named :: name :! a -> Param (name :! a)
 named = Param
 {-# INLINE named #-}
 
-data RangeGen =
-    RangeGen Int
-             Int
-             StdGen
-
-instance RandomGen RangeGen where
-    next (RangeGen lo hi g) =
-        let (i, g') = randomR (lo, hi) g
-         in (i, RangeGen lo hi g')
-    split (RangeGen lo hi g) =
-        let (g1, g2) = split g
-         in (RangeGen lo hi g1, RangeGen lo hi g2)
-
-newtype LinearGen =
-    LinearGen Int
-
-instance RandomGen LinearGen where
-    next (LinearGen i) = (i, LinearGen $ i + 1)
-    split (LinearGen i) = (LinearGen i, LinearGen i)
-
-data BenchmarkState g = BenchmarkState
-    { _fieldCount :: Int
-    , _fieldSelection :: RangeGen
-    , _valueSizeGen :: RangeGen
-    , _tableCount :: Int
-    , _tableSelection :: RangeGen
-    , _keySelection :: g
-    , _operationSelection :: RangeGen
-    , _fieldCountSelection :: RangeGen
-    , _scanCountSelection :: RangeGen
+data BenchmarkState = BenchmarkState
+    { fieldCount :: Int
+    , fieldSelection :: Bounds Int
+    , valueSizeBounds :: Bounds Int
+    , tableCount :: Int
+    , tableSelection :: Bounds Int
+    , keySelection :: Bounds Int
+    , operationSelection :: Maybe [Operation]
+    , fieldCountSelection :: Bounds (Int)
+    , scanCountSelection :: Bounds Int
     }
 
 makeLenses ''BenchmarkState
 
 -- lens does not work with RankNTypes :(
-createValue ::
-       forall g. RandomGen g
-    => StateT (BenchmarkState g) IO String
-createValue = do
-    bmState <- get
-    let valSizeGenerator = view valueSizeGen bmState
-        (size, valSizeGenerator') = next valSizeGenerator
-    put $ over valueSizeGen (const valSizeGenerator') bmState
-    (return . concatMap valueTemplate . take size) [1,2 ..]
+createValue :: (Num a, Show a, MonadRandom m, Enum a) => Bounds a -> m String
+createValue valueSizeBounds = randomEnumFromBounds valueSizeBounds <&> \i -> mconcat $ map valueTemplate [1..succ i]
 
-createRequest ::
-       forall g. RandomGen g
-    => StateT (BenchmarkState g) IO KVRequest
-createRequest = do
-    bmState <- get
-    let opSelector = view operationSelection bmState
-        (op, opSelector') = next opSelector
-        bmState' = over operationSelection (const opSelector') bmState
-        tableSelector = view tableSelection bmState
-        (tableId, tableSelector') = next tableSelector
-        table = tableTemplate tableId
-        bmState'' = over tableSelection (const tableSelector') bmState'
-        keySelector = view keySelection bmState
-        (keyId, keySelector') = next keySelector
-        key = keyTemplate keyId
-        bmState''' = over keySelection (const keySelector') bmState''
-    put bmState'''
-    case op of
-        0 -> prepareINSERT table key <$> createINSERTEntry
-        1 -> prepareUPDATE table key <$> createUPDATEEntry
-        2 -> prepareREAD table key . Set.map fieldTemplate <$> getFields
-        3 ->
-            prepareSCAN table key <$> getScanCount <*>
-            (Set.map fieldTemplate <$> getFields)
-        4 -> return $ prepareDELETE table key
-        _ -> error $ "No such operation: " ++ show op
+randomFrom :: (MonadRandom m, Foldable f) => f a -> m a
+randomFrom = uniform
+
+randomEnum :: (MonadRandom m, Enum a) => "lowerBound" :! a -> "upperBound" :! a -> m a
+randomEnum (Arg lo) (Arg hi) =
+    getRandom <&> \i -> toEnum $ loI + (fromIntegral $ i `mod` range)
   where
-    getFieldsAndValues ::
-           forall g. RandomGen g
-        => [Int]
-        -> StateT (BenchmarkState g) IO (HM.HashMap String String)
+    loI = fromEnum lo
+    hiI = fromEnum hi
+    range = hiI - loI
+
+
+randomEnumFromBounds :: (MonadRandom m, Enum a) => Bounds a -> m a
+randomEnumFromBounds (Bounds lo hi) = randomEnum ! named lo ! named hi
+
+randomBounded :: (MonadRandom m, Enum a, Bounded a) => m a
+randomBounded = randomEnum ! #lowerBound minBound ! #upperBound maxBound
+
+createRequest :: MonadRandom m
+    => BenchmarkState -> m KVRequest
+createRequest BenchmarkState {..} = do
+        op <- maybe randomBounded randomFrom operationSelection
+        table <- tableTemplate <$> randomEnumFromBounds tableSelection
+        key <- keyTemplate <$> randomEnumFromBounds keySelection
+        case op of
+            INSERT -> prepareINSERT table key <$> createINSERTEntry
+            UPDATE -> prepareUPDATE table key <$> createUPDATEEntry
+            READ -> prepareREAD table key . Set.map fieldTemplate <$> getFields
+            SCAN ->
+                prepareSCAN table key <$> getScanCount <*>
+                (Set.map fieldTemplate <$> getFields)
+            DELETE -> return $ prepareDELETE table key
+    -- let opSelector = view operationSelection bmState
+    --     (op, opSelector') = next opSelector
+    --     bmState' = over operationSelection (const opSelector') bmState
+    --     tableSelector = view tableSelection bmState
+    --     (tableId, tableSelector') = next tableSelector
+    --     table = tableTemplate tableId
+    --     bmState'' = over tableSelection (const tableSelector') bmState'
+    --     keySelector = view keySelection bmState
+    --     (keyId, keySelector') = next keySelector
+    --     key = keyTemplate keyId
+    --     bmState''' = over keySelection (const keySelector') bmState''
+    -- put bmState'''
+    -- case op of
+    --     0 -> prepareINSERT table key <$> createINSERTEntry
+    --     1 -> prepareUPDATE table key <$> createUPDATEEntry
+    --     2 -> prepareREAD table key . Set.map fieldTemplate <$> getFields
+    --     3 ->
+    --         prepareSCAN table key <$> getScanCount <*>
+    --         (Set.map fieldTemplate <$> getFields)
+    --     4 -> return $ prepareDELETE table key
+    --     _ -> error $ "No such operation: " ++ show op
+  where
     getFieldsAndValues =
         fmap HM.fromList .
-        mapM (\i -> (,) <$> pure (fieldTemplate i) <*> createValue)
-    createINSERTEntry ::
-           forall g. RandomGen g
-        => StateT (BenchmarkState g) IO (HM.HashMap String String)
-    createINSERTEntry =
-        getFieldsAndValues . flip take [1,2 ..] . view fieldCount =<< get
-    getFields ::
-           forall g. RandomGen g
-        => StateT (BenchmarkState g) IO (Set.HashSet Int)
+        mapM (\i -> (,) <$> pure (fieldTemplate i) <*> createValue valueSizeBounds)
+    createINSERTEntry = getFieldsAndValues [1 .. succ fieldCount]
     getFields = do
-        s <- get
-        let fieldCountGen = view fieldCountSelection s
-            (fieldCount, fieldCountGen') = next fieldCountGen
-            s' = over fieldCountSelection (const fieldCountGen') s
-            fieldSel = view fieldSelection s'
-            (fieldSel', fields) =
-                foldl
-                    (\(sel, l) _ ->
-                         let (f, sel') = next sel
-                          in (sel', l ++ [f]))
-                    (fieldSel, []) $
-                take fieldCount [1,2 ..]
-            s'' = over fieldSelection (const fieldSel') s'
-        put s''
-        return $ Set.fromList fields
-    createUPDATEEntry ::
-           forall g. RandomGen g
-        => StateT (BenchmarkState g) IO (HM.HashMap String String)
+        aFieldCount <- randomEnumFromBounds fieldCountSelection
+        Set.fromList <$> replicateM aFieldCount (randomEnumFromBounds fieldSelection)
     createUPDATEEntry = getFieldsAndValues . Set.toList =<< getFields
-    getScanCount = do
-        s <- get
-        let scanCountSel = view scanCountSelection s
-            (scanCount, scanCountSel') = next scanCountSel
-        put $ over scanCountSelection (const scanCountSel') s
-        return scanCount
+    getScanCount =
+        randomEnumFromBounds scanCountSelection
 
-workload ::
-       forall g. RandomGen g
-    => Int
-    -> StateT (BenchmarkState g) IO (V.Vector KVRequest)
-workload operationCount =
-    V.fromList <$> mapM (const createRequest) [1 .. operationCount]
+workload :: MonadRandom m => Int -> BenchmarkState -> m (V.Vector KVRequest)
+workload operationCount state = V.fromList <$> replicateM operationCount (createRequest state)
 
 showState :: KVSState MockDB -> IO String
 showState KVSState {_cache = cache, _storage = MockDB dbRef _ _} = do
     db <- readIORef dbRef
     return $ "Cache:\n" ++ show cache ++ "\nDB:\n" ++ show db
 
+defaultFieldCount :: Int
 defaultFieldCount = 10
 
 defaultBenchmarkState =
     BenchmarkState
-        { _fieldCount = defaultFieldCount
-        , _fieldSelection = RangeGen 0 10 $ mkStdGen 0
-        , _valueSizeGen = RangeGen 5 10 $ mkStdGen 0
-        , _tableCount = 20
-        , _tableSelection = RangeGen 1 1 $ mkStdGen 0
-        , _keySelection = LinearGen 1
-        , _operationSelection = undefined
-        , _fieldCountSelection = RangeGen 3 10 $ mkStdGen 0
-        , _scanCountSelection = RangeGen 5 10 $ mkStdGen 0
+        { fieldCount = defaultFieldCount
+        , fieldSelection = Bounds ! #lowerBound 0 ! #upperBound 10
+        , valueSizeBounds = Bounds ! #lowerBound 5 ! #upperBound 10
+        , tableCount = 20
+        , tableSelection = Bounds ! #lowerBound 1 ! #upperBound 1
+        , keySelection = maxBounds
+        , operationSelection = Nothing
+        , fieldCountSelection = Bounds ! #lowerBound 3 ! #upperBound 10
+        , scanCountSelection = Bounds ! #lowerBound 5 ! #upperBound 10
         }
   -- traceM "recur
 
 loadDB ::
-       "numTables" :! Int
-    -> "numKeys" :! Int
-    -> "numFields" :? Int
+       "numTables" :! _
+    -> "numKeys" :! _
+    -> "numFields" :? _
     -> StateT (KVSState MockDB) IO ()
 loadDB (named -> tc) (named -> keyCount) (argDef #numFields defaultFieldCount -> numFields) = do
     tables <-
-        liftIO $ evalRandIO $ genTables ! keyCount ! #numFields numFields ! tc
+        liftIO $ genTables ! keyCount ! #numFields numFields ! tc
     pureWritePipeline tables
   -- traceM "state after init:"
   -- traceM =<< showState s'
@@ -272,14 +236,13 @@ loadDB (named -> tc) (named -> keyCount) (argDef #numFields defaultFieldCount ->
 
 reqBenchmarkState keyCount numTables fieldCount opSelect =
     defaultBenchmarkState
-        { _keySelection = RangeGen 1 keyCount $ mkStdGen 0
-        , _operationSelection =
-              maybe (RangeGen 0 4) (\i -> RangeGen i i) opSelect $ mkStdGen 0
+        { keySelection = Bounds ! #lowerBound 1 ! #upperBound keyCount
+        , operationSelection = opSelect
               -- (RangeGen 1 3 $ mkStdGen 0) -- _operationSelection (no INSERT, no DELETE)
-        , _tableCount = numTables
-        , _tableSelection = RangeGen 0 numTables $ mkStdGen 0
-        , _fieldCount = fieldCount
-        , _fieldCountSelection = RangeGen 0 fieldCount $ mkStdGen 0
+        , tableCount = numTables
+        , tableSelection = Bounds ! #lowerBound 0 ! #upperBound numTables
+        , fieldCount = fieldCount
+        , fieldCountSelection = Bounds ! #lowerBound 0 ! #upperBound fieldCount
         }
 
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime
@@ -289,11 +252,11 @@ runRequests ::
        (?execRequests :: ExecReqFn)
     => "operationCount" :! Int
     -> "preloadCache" :! Bool
-    -> BenchmarkState RangeGen
-    -> StateT (KVSState MockDB) IO Integer
+    -> BenchmarkState
+    -> StateT (KVSState MockDB) IO Double
 runRequests (Arg operationCount) (Arg preload) bmState = do
     liftIO $ traceEventIO "Building requests"
-    (requests, _) <- liftIO $ runStateT (workload operationCount) bmState
+    let requests = flip evalRand (mkStdGen 0) $ workload operationCount bmState
   -- traceM $ "requests:"
   -- mapM (\i -> traceM $ show i ++ "\n" ) requests
     forceA_ requests
@@ -301,26 +264,27 @@ runRequests (Arg operationCount) (Arg preload) bmState = do
     liftIO $ traceEventIO "Forcing GC"
     liftIO performGC
     liftIO $ traceEventIO "Starting measurement"
-    start <- liftIO currentTimeMillis
-    responses <- ?execRequests requests
-    liftIO $ traceEventIO "Forcing results"
-    forceA_ responses
-    --() <- join $ gets forceA_ -- forces the state
-    stop <- liftIO currentTimeMillis
+    s <- get
+    let bench = nfIO $ flip evalStateT s $ ?execRequests requests
+    (result, _) <- liftIO $ measure bench 1
+    let execTime = measTime result
     liftIO $ traceEventIO "Finished measurement"
-    let execTime = stop - start
   -- traceM "???????????????????????????????????????"
   -- traceM $ "responses:"
   -- mapM (\i -> traceM $ show i ++ "\n" a) responses
-    unless (operationCount == length responses) $ liftIO $
-      error "wrong number of responses"
+    -- unless (operationCount == length responses) $ liftIO $
+    --   error "wrong number of responses"
     return execTime
 
 doPreload :: DB_Iface db => V.Vector KVRequest -> StateT (KVSState db) IO ()
-doPreload requests = mapM_ (load >=> maybe (pure ()) insertToCache) tables
+doPreload requests = do
+    tables <- catMaybes <$> mapM load tableIds
+    mapM_ forceA tables
+    cache' <- use cache
+    let !cache'' = foldr' (uncurry HM.insert) cache' tables
+    cache Control.Lens..= cache''
   where
-    tables = nub $ V.toList $ fmap kVRequest_table requests
-    insertToCache = (cache %=) . uncurry HM.insert
+    tableIds = nub $ V.toList $ fmap kVRequest_table requests
 
 defaultTableCount = 20
 
@@ -345,7 +309,7 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                                } = do
     traceEventIO "Starting benchmark"
     let bmState =
-            reqBenchmarkState keyCount numTables numFields requestSelection
+            reqBenchmarkState keyCount numTables numFields (pure <$> requestSelection)
     s <- initState useEncryption
     execTimes <-
         flip evalStateT s $ do
@@ -362,26 +326,12 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                 (runRequests ! #operationCount batchSize
                              ! #preloadCache preloadCache
                              $ bmState)
-    let meanExecTime = mean $ V.fromList $ map fromIntegral execTimes
+    let meanExecTime = mean $ V.fromList execTimes
    -- traceM $ "mean execution time: " ++ show meanExecTime ++ " ms"
     return meanExecTime
 
-confs =
-  [ BatchConfig { keyCount = 100
-                , batchCount = 30
-                , batchSize = 30
-                , useEncryption = True
-                , numTables = 20
-                , threadCount = c
-                , systemVersion = v
-                }
-  | c <- [1..8]
-  , v <- [Functional, Ohua_FBM, Ohua_SBFM]
-  ]
-
-outputFile = "100keys-20tables.json"
-
-avg l = sum l `div` toInteger (length l)
+avg :: (Foldable f, Num i, Integral i) => f i -> i
+avg l = sum l `div` fromIntegral (length l)
 
 testEachAction replications = do
     results <-
@@ -431,8 +381,8 @@ profileRequests = do
     stats <-
         flip evalStateT s' $
         replicateM 5 $ do
-            (requests, _) <-
-                liftIO $ runStateT (workload operationCount) bmState
+            requests <-
+                liftIO $ workload operationCount bmState
             -- liftIO $ evaluate $ force requests
             forceA_ requests
             liftIO performGC
@@ -554,26 +504,27 @@ runners = [ ("pure", pureWritePipeline)
            , ("default", pureWritePipeline)
            ]
 
+
 genTables ::
        MonadRandom m
     => "numKeys" :! Int
     -> "numFields" :! Int
     -> "numTables" :! Int
-    -> m [(T.Text, Table)]
+    -> m [NamedTable]
 genTables (Arg keyCount) (Arg fieldCount) (Arg tableCount) =
     replicateM tableCount genTable
   where
     genTable =
-        curry ((T.pack . tableTemplate) *** HM.fromList) <$> rInt <*>
+        curry (bimap (T.pack . tableTemplate) HM.fromList) <$> rInt <*>
         replicateM keyCount genKVPair
     genKVPair =
-        curry ((T.pack . keyTemplate) *** HM.fromList) <$> rInt <*>
+        curry (bimap (T.pack . keyTemplate) HM.fromList) <$> rInt <*>
         replicateM fieldCount genFields
     genFields =
-        curry ((T.pack . fieldTemplate) *** (T.pack . valueTemplate)) <$> rInt <*>
+        curry (bimap (T.pack . fieldTemplate) (T.pack . valueTemplate)) <$> rInt <*>
         rInt
     rInt :: MonadRandom m => m Int
-    rInt = getRandom
+    rInt = randomBounded
 
 testPipeline ::
         "numEntries" :! Int
@@ -582,11 +533,11 @@ testPipeline ::
      -> String
      -> IO [Integer]
 testPipeline (Arg numEntries) (Arg numFields) (Arg cores) benchRunner = do
-  setStdGen (mkStdGen 20)
   -- putStrLn " --> Generating tables ..."
-  tables <- evalRandIO $ genTables ! #numTables 300
-                                   ! #numKeys numEntries
-                                   ! #numFields numFields
+  let tables = flip evalRand (mkStdGen 20) $
+                  genTables ! #numTables 300
+                            ! #numKeys numEntries
+                            ! #numFields numFields
   forceA_ tables
   -- liftIO $ evaluate $ force tables
   -- putStrLn " --> done."
@@ -661,22 +612,19 @@ benchmarkGC (BenchParams configFile) = do
     return ()
   where
     runPipeBenchmark GCBenchConfig {..} =
-        mapM runPipeline [minSize,(minSize + stepSize) .. maxSize]
-      where
-        runPipeline size = forM [minCores .. maxCores] $ runPipelineForCore size
-        runPipelineForCore size cores = do
-            putStrLn $
-                "Running config: #cores = " ++
-                (show cores) ++ " size = " ++ (show size)
-            times <-
-                replicateM reps $
-                (testPipeline ! #numEntries size
-                              ! #numFields size
-                              ! #cores [cores])
-                    runner
-            times' <- return $ join times
-      -- let times = HM.fromListWith (++) [ (sys, [time]) | (sys, time) <- times' ]
-            return $ Recorded cores size runner times'
+        sequence
+            [ do putStrLn $
+                     "Running config: #cores = " ++
+                     show cores ++ " size = " ++ show size
+                 times <-
+                     replicateM reps $
+                     (testPipeline ! #numEntries size ! #numFields size !
+                      #cores [cores])
+                         runner
+                 return $ Recorded cores size runner (join times)
+            | size <- [minSize,(minSize + stepSize) .. maxSize]
+            , cores <- [minCores .. maxCores]
+            ]
 
 data BenchParams = BenchParams { file :: String }
 
@@ -693,10 +641,8 @@ main =
   -- profileRequests
   -- testEachAction 10
   -- putStrLn ("Microbenchmark num caps: " ++ (show numCapabilities)) >>
-  execParser opts >>=
-  benchmarkGC >>
-  -- testPipeline 50 50 [1..4] "sbfm-chan" >>
-  return ()
+  benchMain
+  --execParser opts >>= void . benchmarkGC
   where
     opts = info (cmdArgParser <**> helper)
       ( fullDesc
@@ -707,8 +653,8 @@ main =
 
 benchMain :: IO ()
 benchMain = do
-     conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
-     BS.putStr .
-         AE.encode =<<
-         let ?execRequests = execFn (systemVersion conf)
-          in runMultipleBatches conf
+    initializeTime
+    conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
+    BS.putStr . AE.encode =<<
+        let ?execRequests = execFn (systemVersion conf)
+         in runMultipleBatches conf

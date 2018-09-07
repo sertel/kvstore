@@ -1,180 +1,211 @@
-name:                kvstore
-version:             0.1.0.0
--- synopsis:
--- description:
-homepage:            https://github.com/sertel/kvstore#readme
-license:             BSD3
-license-file:        LICENSE
-author:              Sebastian Ertel
-maintainer:          sebastian.ertel@gmail.com
-copyright:           2018 Sebastian Ertel
-category:            Web
-build-type:          Simple
-extra-source-files:  README.md
-cabal-version:       >=1.10
+-- This file has been generated from package.yaml by hpack version 0.28.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: c772dca4447ce96f8083b9614b1b77abdef0f5fca263db215263640cc2d32d47
+
+name:           kvstore
+version:        0.1.0.0
+category:       Web
+homepage:       https://github.com/sertel/kvstore.git#readme
+bug-reports:    https://github.com/sertel/kvstore.git/issues
+author:         Sebastian Ertel
+maintainer:     sebastian.ertel@gmail.com
+copyright:      2018 Sebastian Ertel
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/sertel/kvstore.git
 
 library
-  hs-source-dirs:      src, thrift/gen-hs
-  exposed-modules:     Kvstore.KeyValueService
-                     , Kvstore.Cache
-                     , Kvstore.KVSTypes
-                     , Kvstore.Ohua.Cache
-                     , Kvstore.Ohua.KeyValueService
-                     , Kvstore.Ohua.KVSTypes
-                     , Kvstore.Ohua.FBM.Cache
-                     , Kvstore.Ohua.FBM.KeyValueService
-                     , Kvstore.Ohua.SBFM.Cache
-                     , Kvstore.Ohua.SBFM.KeyValueService
-                     , Kvstore.RequestHandling
-                     , Kvstore.Ohua.RequestHandling
-                     , Kvstore.Ohua.FBM.RequestHandling
-                     , Kvstore.Ohua.SBFM.RequestHandling
-                     , Kvstore.Ohua.SBFM.KVSTypes
-                     , Kvservice_Types
-                     , Database.DatabaseService
-                     , KeyValueStore
-                     , KeyValueStore_Iface
-                     , Kvstore.Serialization
-                     , DB_Iface
-                     , Db_Types
-                     , Kvstore.InputOutput
-                     , MBConfig
-                     , Versions
-  other-modules:       KeyValueStore_Client
-                     , Kvservice_Consts
-                     , DB
-                     , DB_Client
-                     , Db_Consts
-  build-depends:       base
-                     , mtl
-                     , containers
-                     , unordered-containers
-                     , hashable
-                     , text
-                     , thrift
-                     , vector
-                     , QuickCheck
-                     , bytestring
-                     , aeson
-                     , statefulness
-                     , deepseq
-                     , lens
-  ghc-options:         -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
-  default-language:    Haskell2010
-
-
-executable kv-service-exe
-  hs-source-dirs:      kvs-exe
-  main-is:             KVService.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
-  build-depends:       base
-                     , kvstore
-                     , mtl
-                     , containers
-                     , unordered-containers
-                     , hashable
-                     , text
-                     , thrift
-                     , vector
-                     , QuickCheck
-                     , bytestring
-  default-language:    Haskell2010
+  exposed-modules:
+      Kvstore.KeyValueService
+      Kvstore.Cache
+      Kvstore.KVSTypes
+      Kvstore.Ohua.Cache
+      Kvstore.Ohua.KeyValueService
+      Kvstore.Ohua.KVSTypes
+      Kvstore.Ohua.FBM.Cache
+      Kvstore.Ohua.FBM.KeyValueService
+      Kvstore.Ohua.SBFM.Cache
+      Kvstore.Ohua.SBFM.KeyValueService
+      Kvstore.RequestHandling
+      Kvstore.Ohua.RequestHandling
+      Kvstore.Ohua.FBM.RequestHandling
+      Kvstore.Ohua.SBFM.RequestHandling
+      Kvstore.Ohua.SBFM.KVSTypes
+      Kvservice_Types
+      Database.DatabaseService
+      KeyValueStore
+      KeyValueStore_Iface
+      Kvstore.Serialization
+      DB_Iface
+      Db_Types
+      Kvstore.InputOutput
+      MBConfig
+      Versions
+  other-modules:
+      DB
+      DB_Client
+      Db_Consts
+      KeyValueStore_Client
+      Kvservice_Consts
+      Paths_kvstore
+  hs-source-dirs:
+      src
+      thrift/gen-hs
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo
+  build-depends:
+      QuickCheck
+    , aeson
+    , base
+    , bytestring
+    , containers
+    , deepseq
+    , hashable
+    , lens
+    , mtl
+    , statefulness
+    , text
+    , thrift
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
 
 executable db-service-exe
-  hs-source-dirs:      db-exe
-  main-is:             DBService.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
-  build-depends:       base
-                     , kvstore
-                     , mtl
-                     , containers
-                     , unordered-containers
-                     , hashable
-                     , text
-                     , thrift
-                     , vector
-                     , QuickCheck
-                     , bytestring
-  default-language:    Haskell2010
+  main-is: DBService.hs
+  other-modules:
+      Paths_kvstore
+  hs-source-dirs:
+      db-exe
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -rtsopts -with-rtsopts=-N -ddump-to-file
+  build-depends:
+      QuickCheck
+    , aeson
+    , base
+    , bytestring
+    , containers
+    , deepseq
+    , hashable
+    , kvstore
+    , lens
+    , mtl
+    , text
+    , thrift
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
 
-test-suite kvstore-test
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             KvserviceTest.hs
-  other-modules:       ServiceConfig
-                     , Requests
-                     , CorrectnessTests
-                     , Crypto
-  build-depends:       base
-                     , kvstore
-                     , mtl
-                     , test-framework
-                     , test-framework-hunit
-                     , HUnit
-                     , text
-                     , unordered-containers
-                     , vector
-                     , random
-                     , lens
-                     , time
-                     , statistics
-                     , optparse-applicative
-                     , aeson
-                     , bytestring
-                     , zlib
-                     , cryptonite
-                     , deepseq
-                     , memory
-                     , containers
-                     , binary
-                     , binary-orphans
-                     , cereal
-                     , cereal-text
-                     , hashable
-                     , rdtsc
-  -- ghc-options:         -threaded -rtsopts -with-rtsopts=-N -ddump-to-file -ddump-ds -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes  -dsuppress-idinfo
-  default-language:    Haskell2010
+executable kv-service-exe
+  main-is: KVService.hs
+  other-modules:
+      Paths_kvstore
+  hs-source-dirs:
+      kvs-exe
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , aeson
+    , base
+    , bytestring
+    , containers
+    , deepseq
+    , hashable
+    , kvstore
+    , lens
+    , mtl
+    , text
+    , thrift
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
 
 executable microbench
   main-is: Microbenchmark.hs
-  hs-source-dirs: test
-  other-modules:   Crypto
-                 , Requests
-                 , ServiceConfig
-  build-depends:   base
-                 , kvstore
-                 , aeson
-                 , bytestring
-                 , lens
-                 , time
-                 , statistics
-                 , text
-                 , cryptonite
-                 , zlib
-                 , deepseq
-                 , unordered-containers
-                 , memory
-                 , mtl
-                 , vector
-                 , random
-                 , containers
-                 , binary
-                 , binary-orphans
-                 , cereal
-                 , hashable
-                 , cereal-text
-                 , MonadRandom
-                 , statefulness
-                 , rdtsc
-                 , optparse-applicative
-                 , named
-  ghc-options:   -threaded -Wall -O2 -eventlog -rtsopts -with-rtsopts=-N4
+  other-modules:
+      Crypto
+      Requests
+      ServiceConfig
+  hs-source-dirs:
+      test
+  default-extensions: ScopedTypeVariables NamedFieldPuns OverloadedStrings FlexibleContexts RecordWildCards TypeApplications ImplicitParams TupleSections RankNTypes DeriveGeneric DataKinds TypeOperators ViewPatterns LambdaCase ConstraintKinds TypeFamilies GADTs
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -O2 -rtsopts
+  build-depends:
+      MonadRandom
+    , aeson
+    , base
+    , binary
+    , binary-orphans
+    , bytestring
+    , cereal
+    , cereal-text
+    , containers
+    , criterion
+    , cryptonite
+    , deepseq
+    , hashable
+    , kvstore
+    , lens
+    , memory
+    , mtl
+    , named
+    , optparse-applicative
+    , random
+    , rdtsc
+    , statefulness
+    , statistics
+    , text
+    , time
+    , unordered-containers
+    , vector
+    , zlib
   default-language: Haskell2010
 
-
-
-
-source-repository head
-  type:     git
-  location: https://github.com/sertel/kvstore.git
+test-suite kvstore-test
+  type: exitcode-stdio-1.0
+  main-is: KvserviceTest.hs
+  other-modules:
+      CorrectnessTests
+      Crypto
+      Microbenchmark
+      Requests
+      ServiceConfig
+      Paths_kvstore
+  hs-source-dirs:
+      test
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      HUnit
+    , aeson
+    , base
+    , binary
+    , binary-orphans
+    , bytestring
+    , cereal
+    , cereal-text
+    , containers
+    , cryptonite
+    , deepseq
+    , hashable
+    , kvstore
+    , lens
+    , memory
+    , mtl
+    , optparse-applicative
+    , random
+    , rdtsc
+    , statistics
+    , test-framework
+    , test-framework-hunit
+    , text
+    , time
+    , unordered-containers
+    , vector
+    , zlib
+  default-language: Haskell2010

@@ -1,4 +1,5 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, ConstraintKinds, TypeSynonymInstances,
+  FlexibleInstances, LambdaCase #-}
 
 module Kvstore.RequestHandling where
 
@@ -24,36 +25,64 @@ import qualified Kvstore.InputOutput     as InOut
 import qualified DB_Iface                as DB
 import           Debug.Trace
 
+type HasCache s m = (MonadState s m, AccessCache s)
 
-read_ :: T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> StateT (KVSState a) IO KVResponse
-read_ table key Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
-read_ table key (Just fields) = do
-  s@KVSState{_cache=cache} <- get
-  case HM.lookup table cache of
-    Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such table!"
-    (Just valTable) -> case HM.lookup key valTable of
-                          Nothing -> return $ KVResponse READ Nothing Nothing $ Just $ T.pack "no such key!"
-                          (Just fieldVals) -> return $ KVResponse
-                                                         READ
-                                                         (Just $ findFields fieldVals fields)
-                                                         Nothing
-                                                         Nothing
+
+class AccessCache s where
+    getCache :: Lens' s KVStore
+
+
+instance AccessCache (KVSState a) where
+    getCache = cache
+
+instance AccessCache KVStore where
+    getCache = id
+
+read_ :: HasCache s m => T.Text -> T.Text -> Maybe (Set.HashSet T.Text) -> m KVResponse
+read_ _ _ Nothing = return $ KVResponse READ (Just HM.empty) Nothing Nothing
+read_ table key (Just fields) =
+    (HM.lookup table <$> use getCache) >>= \case
+        Nothing ->
+            return $
+            KVResponse READ Nothing Nothing $ Just $ T.pack "no such table!"
+        (Just valTable) ->
+            case HM.lookup key valTable of
+                Nothing ->
+                    return $
+                    KVResponse READ Nothing Nothing $
+                    Just $ T.pack "no such key!"
+                (Just fieldVals) ->
+                    return $
+                    KVResponse
+                        READ
+                        (Just $ findFields fieldVals fields)
+                        Nothing
+                        Nothing
   where
-    findFields fieldVals = HM.fromList . mapMaybe (\k -> (k,) <$> HM.lookup k fieldVals) . Set.toList
+    findFields fieldVals =
+        HM.fromList .
+        mapMaybe (\k -> (k, ) <$> HM.lookup k fieldVals) . Set.toList
 
-scan :: T.Text -> T.Text -> Maybe Int32 -> StateT (KVSState a) IO KVResponse
-scan table key Nothing = return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no record count specified!"
-scan table key (Just recordCount) = do
-  s@KVSState{_cache=cache} <- get
-  case HM.lookup table cache of
-    Nothing -> return $ KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
-    (Just valTable) -> do
-                        let collected = (Vector.fromList . collect . List.sortBy (compare `on` fst) . HM.toList) valTable
-                        return $ KVResponse SCAN Nothing (Just collected) Nothing
+scan :: HasCache s m => T.Text -> T.Text -> Maybe Int32 -> m KVResponse
+scan _ _ Nothing =
+    return $
+    KVResponse SCAN Nothing Nothing $ Just $ T.pack "no record count specified!"
+scan table key (Just recordCount) =
+    (HM.lookup table <$> use getCache) >>= \case
+        Nothing ->
+            return $
+            KVResponse SCAN Nothing Nothing $ Just $ T.pack "no such key!"
+        (Just valTable) -> do
+            let collected =
+                    (Vector.fromList .
+                     collect . List.sortBy (compare `on` fst) . HM.toList)
+                        valTable
+            return $ KVResponse SCAN Nothing (Just collected) Nothing
   where
     collect [] = []
-    collect a@((k,v):xs) | k == key = (map snd . take (fromIntegral recordCount)) a
-                         | otherwise = collect xs
+    collect a@((k, _):xs)
+        | k == key = (map snd . take (fromIntegral recordCount)) a
+        | otherwise = collect xs
 
 update :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 update table key Nothing = update table key $ Just HM.empty
@@ -86,7 +115,7 @@ delete tableId key = do
         Nothing -> return ()
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
-serve :: (DB.DB_Iface a) => KVRequest -> StateT (KVSState a) IO KVResponse
+serve :: HasCache s m => KVRequest -> m KVResponse
 serve (KVRequest op table key fields recordCount values) =
   case op of
     READ   -> read_ table key fields

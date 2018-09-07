@@ -1,10 +1,11 @@
 {-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
-module MBConfig (BatchConfig(..), def) where
+module MBConfig (BatchConfig(..), def, Operation(..)) where
 
 import Data.Aeson
 import Data.Aeson.TH
 import Versions
 import Data.Word
+import Kvservice_Types
 
 data BatchConfig = BatchConfig
   { keyCount :: Int
@@ -15,7 +16,7 @@ data BatchConfig = BatchConfig
   , threadCount :: Int
   , systemVersion :: Version
   , numFields :: Int
-  , requestSelection :: Maybe Int
+  , requestSelection :: Maybe Operation
   , preloadCache :: Bool
   , readDelay :: Word64
   , writeDelay :: Word64
@@ -23,6 +24,7 @@ data BatchConfig = BatchConfig
 
 
 deriveJSON defaultOptions ''Version
+deriveJSON defaultOptions ''Operation
 deriveJSON defaultOptions { fieldLabelModifier = camelTo2 '_' } ''BatchConfig
 
 

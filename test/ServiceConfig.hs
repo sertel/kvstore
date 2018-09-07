@@ -58,10 +58,7 @@ make db readDelay writeDelay = do
   pure $ MockDB db (adjust readDelay) (adjust writeDelay)
 
 wait_sins :: Word64 -> Int -> IO Float
-wait_sins num node = do
-  myT <- rdtsc
-  res <- evaluate $ sin_iter num (2.222 + fromIntegral node)
-  return res
+wait_sins num node = evaluate $ sin_iter num (2.222 + fromIntegral node)
 
 -- Measure the cost of N Sin operations.
 measureSin :: Word64 -> IO Word64
