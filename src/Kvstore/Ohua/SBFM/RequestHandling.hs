@@ -101,7 +101,37 @@ writeback store db touched = do
 serve :: (DB.DB_Iface a, Typeable a)
       => Var KVStore -> Var a -> Var KVRequest -> ASTM [Dynamic] (Var KVResponse)
 -- serve cache db (KVRequest op tableId key fields recordCount values) = do
-serve cache db req
+serve = serveCoarse
+
+serveCoarse ::
+       (DB.DB_Iface a, Typeable a)
+    => Var KVStore
+    -> Var a
+    -> Var KVRequest
+    -> ASTM [Dynamic] (Var KVResponse)
+serveCoarse =
+    lift3WithIndexNamed serveDestOpStateIdx "serve/serve" $ \cache _db ->
+        (id :: StateT () IO a -> StateT () IO a) .
+        flip evalStateT cache . RH.serve
+
+serveMap ::
+       (DB.DB_Iface a, Typeable a)
+    => Var KVStore
+    -> Var a
+    -> Var [KVRequest]
+    -> ASTM [Dynamic] (Var [KVResponse])
+serveMap =
+    lift3WithIndexNamed serveDestOpStateIdx "serve/serveMap" $ \cache _db ->
+        (id :: StateT () IO a -> StateT () IO a) .
+        flip evalStateT cache . mapM RH.serve
+
+serveFine ::
+       (DB.DB_Iface a, Typeable a)
+    => Var KVStore
+    -> Var a
+    -> Var KVRequest
+    -> ASTM [Dynamic] (Var KVResponse)
+serveFine cache db req
   -- does destructuring work?
  = do
     op <-
