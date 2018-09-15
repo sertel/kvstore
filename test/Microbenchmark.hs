@@ -1,6 +1,10 @@
 {-# LANGUAGE PartialTypeSignatures, DeriveAnyClass,
   OverloadedLabels, TemplateHaskell #-}
-
+{-# LANGUAGE OverloadedLabels, BangPatterns, ScopedTypeVariables,
+  NamedFieldPuns, OverloadedStrings, FlexibleContexts,
+  RecordWildCards, TypeApplications, ImplicitParams, TupleSections,
+  RankNTypes, DeriveGeneric, DataKinds, TypeOperators, ViewPatterns,
+  LambdaCase, ConstraintKinds, TypeFamilies, GADTs #-}
 import Control.Arrow (first, second)
 import Control.Monad.Random
 import Control.Lens

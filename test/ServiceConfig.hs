@@ -39,6 +39,9 @@ import Data.Serialize.Text
 import Kvstore.Ohua.Cache (forceLazyByteString)
 
 import System.CPUTime
+import System.IO (stderr)
+
+import Text.Printf
 
 type RawDB = IORef (HM.HashMap T.Text BS.ByteString)
 data MockDB = MockDB {
@@ -52,10 +55,15 @@ makeNoWait :: RawDB -> MockDB
 makeNoWait db = MockDB db 0 0
 
 make :: RawDB -> Word64 -> Word64 -> IO MockDB
+make db 0 0 = pure $ MockDB db 0 0
 make db readDelay writeDelay = do
-  cost <- measureSin 100000
-  let adjust i = (i `div` cost) * 100000
-  pure $ MockDB db (adjust readDelay) (adjust writeDelay)
+  cost <- measureSin 10000
+  let adjust 0 = 0
+      adjust i = round $ (realToFrac i / realToFrac cost :: Double) * 10000
+      wd = adjust writeDelay
+      rd = adjust readDelay
+  hPrintf stderr "Calculated a read delay of %d and a write delay of %d" rd wd
+  pure $ MockDB db rd wd
 
 wait_sins :: Word64 -> Int -> IO Float
 wait_sins num node = evaluate $ sin_iter num (2.222 + fromIntegral node)

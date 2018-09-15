@@ -42,9 +42,11 @@ import qualified Thrift.Arbitraries as T
 import Kvservice_Types
 import KeyValueStore
 seqid = R.newIORef 0
+requests :: (T.Transport t0, T.Transport a2, T.Protocol a1, T.Protocol a0) => (a0 t0, a1 a2) -> Vector.Vector KVRequest -> P.IO (Vector.Vector KVResponse)
 requests (ip,op) arg_reqs = do
   send_requests op arg_reqs
   recv_requests ip
+send_requests :: (T.Protocol a1, T.Transport a2) => a1 a2 -> Vector.Vector KVRequest -> P.IO ()
 send_requests op arg_reqs = do
   seq <- seqid
   seqn <- R.readIORef seq

@@ -42,9 +42,11 @@ import qualified Thrift.Arbitraries as T
 import Db_Types
 import DB
 seqid = R.newIORef 0
+get :: (T.Transport t0, T.Transport a2, T.Protocol a1, T.Protocol a0) => (a0 t0, a1 a2) -> LT.Text -> P.IO DBResponse
 get (ip,op) arg_key = do
   send_get op arg_key
   recv_get ip
+send_get :: (T.Protocol a, T.Transport b) => a b -> LT.Text -> P.IO ()
 send_get op arg_key = do
   seq <- seqid
   seqn <- R.readIORef seq
@@ -61,6 +63,7 @@ recv_get ip = do
 put (ip,op) arg_key arg_value = do
   send_put op arg_key arg_value
   recv_put ip
+send_put :: (T.Protocol a, T.Transport b) => a b -> LT.Text -> LBS.ByteString -> P.IO ()
 send_put op arg_key arg_value = do
   seq <- seqid
   seqn <- R.readIORef seq

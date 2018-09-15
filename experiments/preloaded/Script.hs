@@ -14,28 +14,37 @@ import Control.Monad
 confs =
     [ def
         { keyCount = 70
-        , batchCount = 1
-        , batchSize = 300
+        , batchCount = 5
+        , batchSize = 70
         , useEncryption = True
-        , numTables = 300
+        , numTables = 100
         , numFields = 70
-        , preloadCache = True
+        , preloadCache = False
         , threadCount = c
         , systemVersion = v
-        , readDelay = 0
-        , writeDelay = 1
-        , requestSelection = Just 0
+        , readDelay = 0 --800000
+        , writeDelay = 0 --1000000
+        , requestSelection = Just INSERT
         }
     | c <- [1, 2, 4]
-    , v <- [Functional, Ohua_FBM, Ohua_SBFM]
+    , v <- [Ohua_FBM, Ohua_SBFM]
     ]
+-- With delay
+-- SBFM 1.33
+-- FBM 1.44
+
+
+-- without delay
+-- SBFM 1.68
+-- FBM 1.71
+
 
 runExp c@BatchConfig {..} = do
     printf "Running %s on %d cores, preload = %v ... " (show systemVersion) threadCount (show preloadCache)
     (code, res, err) <-
         readProcessWithExitCode
             "stack"
-            ["exec", "--", "microbench", "+RTS", "-A64m", "-n4m", "-N" ++ show threadCount]
+            ["exec", "--", "microbench", "batches", "+RTS", "-A64m", "-n4m", "-N" ++ show threadCount]
             (encode c)
     hFlush stdout
     unless (code == ExitSuccess) $ do

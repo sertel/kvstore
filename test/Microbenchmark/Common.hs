@@ -1,21 +1,27 @@
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE BangPatterns, ScopedTypeVariables,
+  NamedFieldPuns, OverloadedStrings, FlexibleContexts,
+  RecordWildCards, TypeApplications, ImplicitParams, TupleSections,
+  RankNTypes, DeriveGeneric, DataKinds, TypeOperators, ViewPatterns,
+  LambdaCase, ConstraintKinds, TypeFamilies, GADTs #-}
 module Microbenchmark.Common where
 
-import Control.Monad.Random
 import Control.DeepSeq
 import Control.Lens
-import Control.Monad.State (StateT)
+import Control.Monad.Random
+import Control.Monad.State (MonadState, StateT, modify)
 import qualified Data.HashMap.Strict as HM
 import Data.IORef
 import qualified Data.Text.Lazy as T
 import Data.Time.Clock.POSIX
+import Data.Word
 import Kvstore.InputOutput (store)
 import Kvstore.KVSTypes
 import Named
 import Named.Internal (Param(Param))
 
 import ServiceConfig
-
+import Kvstore.Serialization
 
 type NamedTable = (T.Text, Table)
 
@@ -43,7 +49,9 @@ named = Param
 
 -- lens does not work with RankNTypes :(
 createValue :: (Num a, Show a, MonadRandom m, Enum a) => Bounds a -> m String
-createValue valueSizeBounds = randomEnumFromBounds valueSizeBounds <&> \i -> mconcat $ map valueTemplate [1..succ i]
+createValue valueSizeBounds =
+    randomEnumFromBounds valueSizeBounds <&> \i ->
+        mconcat $ map valueTemplate [1 .. succ i]
 
 randomFrom :: (MonadRandom m, Foldable f) => f a -> m a
 randomFrom = uniform
@@ -76,7 +84,9 @@ initState useEncryption = do
             HM.empty
             (makeNoWait db) -- latency is 0 for loading the DB and then
                           -- we set it for the requests
+            -- jsonSer
             binarySerialization
+            -- jsonDeSer
             binaryDeserialization
             zlibComp
             zlibDecomp
@@ -95,10 +105,10 @@ genTables ::
     -> "numTables" :! Int
     -> m [NamedTable]
 genTables (Arg keyCount) (Arg fieldCount) (Arg tableCount) =
-    replicateM tableCount genTable
+    mapM genTable [0.. pred tableCount]
   where
-    genTable =
-        curry (bimap (T.pack . tableTemplate) HM.fromList) <$> rInt <*>
+    genTable i =
+        (T.pack $ tableTemplate i,) . HM.fromList <$>
         replicateM keyCount genKVPair
     genKVPair =
         curry (bimap (T.pack . keyTemplate) HM.fromList) <$> rInt <*>
@@ -122,6 +132,17 @@ loadDB (named -> tc) (named -> keyCount) (argDef #numFields defaultFieldCount ->
             flip evalRand (mkStdGen 0) $
             genTables ! keyCount ! #numFields numFields ! tc
     pureWritePipeline tables
+
+setDelay :: MonadState (KVSState MockDB) m => "readDelay" :! Word64 -> "writeDelay" :! Word64 -> m ()
+setDelay (Arg readDelay) (Arg writeDelay) =
+    modify $ \s@KVSState {_storage = MockDB db _ _} ->
+        s {_storage = MockDB db readDelay writeDelay}
+
+calculateDelay :: (MonadIO m, MonadState (KVSState MockDB) m) => "readDelay" :! Word64 -> "writeDelay" :! Word64 -> m ()
+calculateDelay (Arg readDelay) (Arg writeDelay) = do
+  MockDB db _ _ <- use storage
+  db' <- liftIO $ make db readDelay writeDelay
+  modify $ \s -> s { _storage = db' }
 
 currentTimeMillis :: IO Integer
 currentTimeMillis = round . (* 1000) <$> getPOSIXTime

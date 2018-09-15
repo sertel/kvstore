@@ -1,31 +1,52 @@
 {-# LANGUAGE OverloadedLabels, PartialTypeSignatures #-}
+{-# LANGUAGE BangPatterns, ScopedTypeVariables,
+  NamedFieldPuns, OverloadedStrings, FlexibleContexts,
+  RecordWildCards, TypeApplications, ImplicitParams, TupleSections,
+  RankNTypes, DeriveGeneric, DataKinds, TypeOperators, ViewPatterns,
+  LambdaCase, ConstraintKinds, TypeFamilies, GADTs #-}
 module Microbenchmark.Profile where
 
 
 import Control.Arrow (first, second)
-import Control.Monad.Random
+import Control.Concurrent (setNumCapabilities)
 import Control.Lens hiding (argument)
-import Control.Monad.State (evalStateT, runStateT, modify, execStateT)
+import Control.Monad.Random
+import Control.Monad.State (evalStateT, execStateT, modify, runStateT)
+import Data.Aeson (eitherDecode)
+import qualified Data.ByteString.Lazy as BS (readFile)
 import Data.IORef
 import qualified Data.Map as Map
+import Data.Semigroup
+import Data.Word (Word64)
 import Kvstore.KVSTypes
+import Named
+import Options.Applicative
 import System.CPUTime
 import System.Mem
-import Named
+import System.IO (stderr)
 import Text.Printf
-import Options.Applicative
-import Data.Semigroup
+import qualified Data.Vector as V
+import Data.List (nub)
+import qualified Data.HashMap.Strict as HM
 
 import qualified Kvstore.Ohua.SBFM.KeyValueService as KVS
+import Kvservice_Types
 
 import Requests
+import ServiceConfig (_dbRef)
 
 import Microbenchmark.KVStore
 import Microbenchmark.Common
 
+import MBConfig
+
+import qualified Foundation as F
+import qualified Foundation.Time.StopWatch as F
+import qualified Foundation.Time.Types as F
+
 data ProfileType
   = Requests Int
-  | Batch
+  | Batch (Maybe FilePath)
 
 
 profileTypeParser :: Parser ProfileType
@@ -42,7 +63,13 @@ profileTypeParser =
                   (progDesc "Profile each request type individually")) <>
          command
              "batch"
-             (info (pure Batch) (progDesc "Profile an entire batch")))
+             (info
+                  (Batch <$>
+                   optional
+                       (strArgument $
+                        metavar "CONFIG" <>
+                        help "Path to a configuration file to use for the batch"))
+                  (progDesc "Profile an entire batch")))
 
 avg :: (Foldable f, Num i, Integral i) => f i -> i
 avg l = sum l `div` fromIntegral (length l)
@@ -55,7 +82,7 @@ testEachAction replications = do
             fmap
                 (fmap avg)
                 (Map.unionsWith (Map.unionWith mappend) $
-                 map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Integer]))
+                 map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Word64]))
     writeFile
         "stat-results"
         (show $
@@ -67,10 +94,10 @@ testEachAction replications = do
                 modify (cache .~ mempty)
                 liftIO performGC
                 (res, stats) <- KVS.execRequestsFunctional0 reqs
-                t0 <- liftIO getCPUTime
-                forceA res
-                t1 <- liftIO getCPUTime
-                let stats' = Map.insert "setup/force-result" (t1 - t0) stats
+                clock <- liftIO F.startPrecise
+                forceA_ res
+                F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
+                let stats' = Map.insert "setup/force-result" forceDone stats
                 liftIO $
                     atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
                 pure res
@@ -87,43 +114,51 @@ testEachAction replications = do
              in deleteEntry "table-0" "key-0"
         Map.fromList <$> readIORef statVar
 
+profileBatchDefaults :: BatchConfig
+profileBatchDefaults = def
+  { threadCount = 1
+  , useEncryption = True
+  }
 
-profileBatch :: IO ()
-profileBatch = do
+profileBatch :: BatchConfig -> IO ()
+profileBatch BatchConfig {..} = do
+    setNumCapabilities threadCount
     s <- initState True
-    s' <- flip execStateT s $ loadDB ! #numTables numTables ! #numKeys keyCount ! #numFields fieldCount
-    t0 <- currentTimeMillis
+    s' <-
+        flip execStateT s $
+        loadDB ! #numTables numTables ! #numKeys keyCount ! #numFields numFields
     stats <-
-        flip evalStateT s' $
-        replicateM 5 $ do
-            requests <-
-                liftIO $ workload operationCount bmState
-            -- liftIO $ evaluate $ force requests
-            forceA_ requests
-            liftIO performGC
-            (responses, stats) <- KVS.execRequestsFunctional0 requests
-            t0 <- liftIO getCPUTime
-            forceA_ responses
-            t1 <- liftIO getCPUTime
-            let execTime = t1 - t0
-            pure $ Map.insert "setup/force-result" execTime stats
-    t1 <- currentTimeMillis
-    printf "Exec time: %d\n" (t1 - t0)
-    writeFile "bench-stats" $
-        show
-            [ ( "benchmark"
-              , map (first show) $
-                Map.toList $
-                fmap avg $
-                Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)
-            ]
+        flip evalStateT s' $ do
+            calculateDelay ! #readDelay readDelay ! #writeDelay writeDelay
+            replicateM batchCount $ do
+                requests <- liftIO $ workload batchSize bmState
+                forceA_ requests
+                liftIO performGC
+                (responses, stats) <- KVS.execRequestsFunctional0 requests
+                clock <- liftIO F.startPrecise
+                forceA_ responses
+                F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
+                pure $ Map.insert "setup/force-result" forceDone stats
+    print
+        ([ ( "benchmark"
+           , map (first show) $
+             Map.toList $
+             fmap avg $
+             Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)
+         ] :: [(String, [(String, Word64)])])
   where
-    operationCount = 30
-    bmState = reqBenchmarkState keyCount numTables fieldCount Nothing
-    numTables = 20
-    keyCount = 25
-    fieldCount = 5
+    bmState =
+        reqBenchmarkState
+            keyCount
+            numTables
+            numFields
+            (pure <$> requestSelection)
 
 profileMain :: ProfileType -> IO ()
-profileMain Batch = profileBatch
+profileMain (Batch conf) =
+    maybe
+        (pure profileBatchDefaults)
+        (fmap (either error id . eitherDecode) . BS.readFile)
+        conf >>=
+    profileBatch
 profileMain (Requests reps) = testEachAction reps

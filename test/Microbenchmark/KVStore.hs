@@ -1,4 +1,8 @@
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedLabels, BangPatterns, ScopedTypeVariables,
+  NamedFieldPuns, OverloadedStrings, FlexibleContexts,
+  RecordWildCards, TypeApplications, ImplicitParams, TupleSections,
+  RankNTypes, DeriveGeneric, DataKinds, TypeOperators, ViewPatterns,
+  LambdaCase, ConstraintKinds, TypeFamilies, GADTs #-}
 module Microbenchmark.KVStore where
 
 
@@ -20,6 +24,7 @@ import System.Mem
 import Named
 import Data.Word
 import Data.Foldable
+import Text.Printf
 
 import Criterion
 import Criterion.Types (Measured(measTime))
@@ -140,15 +145,13 @@ doPreload :: DB_Iface db => V.Vector KVRequest -> StateT (KVSState db) IO ()
 doPreload requests = do
     tables <- catMaybes <$> mapM load tableIds
     mapM_ forceA tables
+    liftIO $ hPrintf stderr "Loaded %i tables" (length tables)
     cache' <- use cache
     let !cache'' = foldr' (uncurry HM.insert) cache' tables
     cache Control.Lens..= cache''
   where
     tableIds = nub $ V.toList $ fmap kVRequest_table requests
-setDelay :: MonadState (KVSState MockDB) m => "readDelay" :! Word64 -> "writeDelay" :! Word64 -> m ()
-setDelay (Arg readDelay) (Arg writeDelay) =
-    modify $ \s@KVSState {_storage = MockDB db _ _} ->
-        s {_storage = MockDB db readDelay writeDelay}
+
 
 runMultipleBatches ::
        (?execRequests :: ExecReqFn) => BatchConfig -> IO Double
@@ -174,8 +177,8 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                    ! #numKeys keyCount
                    ! #numFields numFields
             liftIO $ traceEventIO "Setting delay"
-            setDelay ! #readDelay readDelay
-                     ! #writeDelay writeDelay
+            calculateDelay ! #readDelay readDelay
+                           ! #writeDelay writeDelay
             liftIO $ traceEventIO "Done loading!"
             replicateM
                 batchCount

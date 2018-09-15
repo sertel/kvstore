@@ -1,7 +1,10 @@
-{-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell, OverloadedStrings, CPP #-}
 module MBConfig (BatchConfig(..), def, Operation(..)) where
 
 import Data.Aeson
+#if !MIN_VERSION_aeson(1,3,0)
+import Data.Aeson.Types (camelTo2)
+#endif
 import Data.Aeson.TH
 import Versions
 import Data.Word

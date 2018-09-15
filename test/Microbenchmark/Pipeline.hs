@@ -1,4 +1,9 @@
 {-# LANGUAGE TemplateHaskell, OverloadedLabels, PartialTypeSignatures #-}
+{-# LANGUAGE BangPatterns, ScopedTypeVariables,
+  NamedFieldPuns, OverloadedStrings, FlexibleContexts,
+  RecordWildCards, TypeApplications, ImplicitParams, TupleSections,
+  RankNTypes, DeriveGeneric, DataKinds, TypeOperators, ViewPatterns,
+  LambdaCase, ConstraintKinds, TypeFamilies, GADTs #-}
 module Microbenchmark.Pipeline where
 
 

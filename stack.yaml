@@ -14,5 +14,8 @@ packages:
 extra-deps:
 - thrift-0.10.0
 - named-0.2.0.0
+- ghc-datasize-0.2.0
+- ghc-heap-view-0.5.10
 resolver: lts-10.4
+#resolver: lts-9.21 # necessary for using datasize and heap-view
 allow-newer: true

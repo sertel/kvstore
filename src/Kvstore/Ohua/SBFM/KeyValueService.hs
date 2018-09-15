@@ -3,23 +3,15 @@
 module Kvstore.Ohua.SBFM.KeyValueService where
 
 import           Control.Monad.State
-import           Control.Lens
-import qualified Data.HashMap.Strict               as Map
 import qualified Data.HashSet                      as Set
-import           Data.Int
-import           Data.IORef
-import           Data.Maybe
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as Vector
-import           KeyValueStore_Iface
 import           Kvservice_Types
 
 import qualified Kvstore.Cache                     as Cache
 import           Kvstore.KVSTypes
 
 import qualified DB_Iface                          as DB
-import           Debug.Trace
-
 import           Data.Dynamic2
 import           Monad.StreamsBasedExplicitAPI
 import           Monad.StreamsBasedFreeMonad
@@ -32,9 +24,6 @@ import qualified Kvstore.Ohua.SBFM.Cache           as CF
 import           Kvstore.Ohua.SBFM.KVSTypes        as SFBMTypes
 import qualified Kvstore.Ohua.SBFM.RequestHandling as RH
 
-import Control.Arrow (first)
-import qualified Data.Map as M
-import System.CPUTime
 
 import Control.DeepSeq (NFData)
 

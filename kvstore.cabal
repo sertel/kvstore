@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5450cbad91615803b523974ed1eaa5a59e50aa681bd08cfca8a637880762ab80
+-- hash: f1f76627f926ac807429d2b34d613bf9868ae8a4558e48977b2320a9d75a31db
 
 name:           kvstore
 version:        0.1.0.0
@@ -126,8 +126,8 @@ executable kv-service-exe
     , vector
   default-language: Haskell2010
 
-executable microbench
-  main-is: Microbenchmark.hs
+executable lazy-deser-bench
+  main-is: lazy_deser.hs
   other-modules:
       Crypto
       Requests
@@ -138,7 +138,6 @@ executable microbench
       Microbenchmark.Profile
   hs-source-dirs:
       test
-  default-extensions: ScopedTypeVariables NamedFieldPuns OverloadedStrings FlexibleContexts RecordWildCards TypeApplications ImplicitParams TupleSections RankNTypes DeriveGeneric DataKinds TypeOperators ViewPatterns LambdaCase ConstraintKinds TypeFamilies GADTs
   ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -O2 -rtsopts
   build-depends:
       MonadRandom
@@ -153,6 +152,52 @@ executable microbench
     , criterion
     , cryptonite
     , deepseq
+    , foundation
+    , hashable
+    , kvstore
+    , lens
+    , memory
+    , mtl
+    , named
+    , optparse-applicative
+    , random
+    , rdtsc
+    , statefulness
+    , statistics
+    , text
+    , time
+    , unordered-containers
+    , vector
+    , zlib
+  default-language: Haskell2010
+
+executable microbench
+  main-is: Microbenchmark.hs
+  other-modules:
+      Crypto
+      Requests
+      ServiceConfig
+      Microbenchmark.Common
+      Microbenchmark.Pipeline
+      Microbenchmark.KVStore
+      Microbenchmark.Profile
+  hs-source-dirs:
+      test
+  ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -O2 -rtsopts
+  build-depends:
+      MonadRandom
+    , aeson
+    , base
+    , binary
+    , binary-orphans
+    , bytestring
+    , cereal
+    , cereal-text
+    , containers
+    , criterion
+    , cryptonite
+    , deepseq
+    , foundation
     , hashable
     , kvstore
     , lens
