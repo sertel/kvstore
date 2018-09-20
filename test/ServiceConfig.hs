@@ -25,6 +25,8 @@ import           Control.Concurrent (threadDelay)
 import           GHC.Generics
 import           System.CPUTime.Rdtsc (rdtsc)
 import Control.Exception
+import LazyObject
+import Kvstore.Serialization
 
 import           Crypto
 import GHC.Stack
@@ -167,17 +169,23 @@ noDec :: Decryption
 noDec = Decryption (\s t -> (t,s)) ()
 
 binarySerialization :: Serialization
-binarySerialization = Serialization (\() tbl -> (Ser.encode tbl, ())) ()
+binarySerialization = mkStatelessSer (Ser.encode . fmap LazyObject.read)
 
 binaryDeserialization :: Deserialization
-binaryDeserialization = Deserialization (\() tbl -> (Ser.decode tbl, ())) ()
+binaryDeserialization = mkStatelessDeser (fmap newChanged . Ser.decode)
 
 instance (Hashable key, Eq key, Cereal.Serialize key, Cereal.Serialize value) => Cereal.Serialize (HM.HashMap key value) where
     get = HM.fromList <$> Cereal.get
     put = Cereal.put . HM.toList
 
-cerealSerialization :: Serialization
-cerealSerialization =  Serialization (\() tbl -> (BS.fromStrict $ Cereal.encode tbl, ())) ()
+-- cerealSerialization :: Serialization
+-- cerealSerialization =  Serialization (\() tbl -> (BS.fromStrict $ Cereal.encode tbl, ())) ()
 
-cerealDeserialization :: Deserialization
-cerealDeserialization =  Deserialization (\() tbl -> (either error id $ Cereal.decode $ BS.toStrict tbl, ())) ()
+-- cerealDeserialization :: Deserialization
+-- cerealDeserialization =  Deserialization (\() tbl -> (either error id $ Cereal.decode $ BS.toStrict tbl, ())) ()
+
+lazyBinarySerialization :: Serialization
+lazyBinarySerialization = mkStatelessSer (Ser.encode . fmap (encodeObject Ser.encode))
+
+lazyBinaryDeserialization :: Deserialization
+lazyBinaryDeserialization = mkStatelessDeser (fmap (new Ser.decode) . Ser.decode)

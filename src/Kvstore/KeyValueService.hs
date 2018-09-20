@@ -15,6 +15,7 @@ import qualified Data.Vector             as Vector
 import           Data.Maybe
 import           Data.Int
 import Data.Foldable (foldlM)
+import LazyObject
 
 import qualified Kvstore.Cache           as Cache
 import qualified Kvstore.RequestHandling as RH
@@ -39,22 +40,21 @@ foldWritesIntoCacheS ::
 foldWritesIntoCacheS l = foldlM integrateWrite mempty
   where
     integrateWrite touched (KVRequest op tableId key fields recCount mvalues) = do
-        l . at tableId %= Just . fromMaybe mempty
         case op of
             DELETE -> tableL . at key .= Nothing
             _ ->
                 case mvalues of
                     Just values ->
                         case op of
-                            UPDATE -> tableL . ix key %= (values `Map.union`)
-                            INSERT -> tableL . at key .= Just values
+                            UPDATE -> tableL . ix key . lazyO %= (values `Map.union`)
+                            INSERT -> tableL . at key .= Just (newChanged values)
                             other ->
                                 error $ "invalid operation in fold writes " ++
                                 show other
                     Nothing -> return ()
         return $ Set.insert tableId touched
       where
-        tableL = l . ix tableId
+        tableL = l . at tableId . non mempty
 
 -- almost purely functional version except for the fact that it uses an imperative
 -- mapM to update the cache.

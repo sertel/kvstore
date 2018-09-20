@@ -165,11 +165,12 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
                                , preloadCache
                                , readDelay
                                , writeDelay
+                               , lazySerialization
                                } = do
     traceEventIO "Starting benchmark"
     let bmState =
             reqBenchmarkState keyCount numTables numFields (pure <$> requestSelection)
-    s <- initState useEncryption
+    s <- initState ! #lazySerialization lazySerialization ! #useEncryption useEncryption
     execTimes <-
         flip evalStateT s $ do
             liftIO $ traceEventIO "Loading Database"

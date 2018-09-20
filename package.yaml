@@ -1,0 +1,160 @@
+name: kvstore
+version: '0.1.0.0'
+category: Web
+author: Sebastian Ertel
+maintainer: sebastian.ertel@gmail.com
+copyright: 2018 Sebastian Ertel
+license: BSD3
+github: sertel/kvstore.git
+extra-source-files:
+- README.md
+ghc-options:
+- -dsuppress-type-applications
+- -dsuppress-coercions
+- -dsuppress-module-prefixes
+- -dsuppress-idinfo
+dependencies:
+- base
+- mtl
+- containers
+- unordered-containers
+- hashable
+- text
+- vector
+- bytestring
+- aeson
+- deepseq
+- lens
+
+library:
+  source-dirs:
+  - src
+  - thrift/gen-hs
+  exposed-modules:
+  - Kvstore.KeyValueService
+  - Kvstore.Cache
+  - Kvstore.KVSTypes
+  - Kvstore.Ohua.Cache
+  - Kvstore.Ohua.KeyValueService
+  - Kvstore.Ohua.KVSTypes
+  - Kvstore.Ohua.FBM.Cache
+  - Kvstore.Ohua.FBM.KeyValueService
+  - Kvstore.Ohua.SBFM.Cache
+  - Kvstore.Ohua.SBFM.KeyValueService
+  - Kvstore.RequestHandling
+  - Kvstore.Ohua.RequestHandling
+  - Kvstore.Ohua.FBM.RequestHandling
+  - Kvstore.Ohua.SBFM.RequestHandling
+  - Kvstore.Ohua.SBFM.KVSTypes
+  - Kvservice_Types
+  - Database.DatabaseService
+  - KeyValueStore
+  - KeyValueStore_Iface
+  - Kvstore.Serialization
+  - DB_Iface
+  - Db_Types
+  - Kvstore.InputOutput
+  - MBConfig
+  - Versions
+  - LazyObject
+  dependencies:
+  - thrift
+  - QuickCheck
+  - statefulness
+
+_microbench_fields: &microbench-fields
+    ghc-options:
+    - -threaded
+    - -O2
+    - -rtsopts
+    other-modules:
+    - Crypto
+    - Requests
+    - ServiceConfig
+    - Microbenchmark.Common
+    - Microbenchmark.Pipeline
+    - Microbenchmark.KVStore
+    - Microbenchmark.Profile
+    dependencies:
+    - kvstore
+    - time
+    - statistics
+    - cryptonite
+    - zlib
+    - memory
+    - random
+    - binary
+    - binary-orphans
+    - cereal
+    - cereal-text
+    - MonadRandom
+    - statefulness
+    - rdtsc
+    - optparse-applicative
+    - named
+    - criterion
+    - foundation
+    source-dirs: test
+
+executables:
+  microbench:
+    #main: calc_size.hs
+    main: Microbenchmark.hs
+    # - ghc-datasize
+    # - ghc-heap-view
+    <<: *microbench-fields
+
+  # lazy-deser-bench:
+  #   main: lazy_deser.hs
+  #   <<: *microbench-fields
+
+  kv-service-exe:
+    main: KVService.hs
+    source-dirs: kvs-exe
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - kvstore
+    - thrift
+    - QuickCheck
+
+  db-service-exe:
+    main: DBService.hs
+    source-dirs: db-exe
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -ddump-to-file
+    dependencies:
+    - kvstore
+    - thrift
+    - QuickCheck
+
+tests:
+  kvstore-test:
+    main: KvserviceTest.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - kvstore
+    - test-framework
+    - test-framework-hunit
+    - HUnit
+    - random
+    - time
+    - statistics
+    - optparse-applicative
+    - zlib
+    - cryptonite
+    - memory
+    - binary
+    - binary-orphans
+    - cereal
+    - cereal-text
+    - rdtsc

@@ -23,6 +23,7 @@ data BatchConfig = BatchConfig
   , preloadCache :: Bool
   , readDelay :: Word64
   , writeDelay :: Word64
+  , lazySerialization :: Bool
   }
 
 
@@ -46,4 +47,5 @@ def =
         , preloadCache = False
         , readDelay = 0
         , writeDelay = 0
+        , lazySerialization = True
         }

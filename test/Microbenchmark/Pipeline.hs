@@ -207,7 +207,7 @@ testPipeline (Arg numEntries) (Arg numFields) (Arg cores) benchRunner = do
     forceDB = getDB >=> forceA_
     runSystem _numCores tables f = do
         -- putStrLn $ "num requests: " ++ (show $ length tables)
-        s0 <- initState True
+        s0 <- initState ! #lazySerialization False ! #useEncryption True
         -- let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 12000000 }
         let s = s0 { _storage = MockDB (_dbRef $ _storage s0) 0 1 }
         -- hPrintf stderr "Running %s with ..." (sys :: String)

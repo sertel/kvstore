@@ -17,6 +17,7 @@ import           Data.Maybe
 import           Data.Int
 import qualified Data.List               as List
 import           Data.Function
+import LazyObject
 
 import           Kvstore.KVSTypes
 import qualified Kvstore.Cache           as Cache
@@ -55,7 +56,7 @@ read_ table key (Just fields) =
                     return $
                     KVResponse
                         READ
-                        (Just $ findFields fieldVals fields)
+                        (Just $ findFields (LazyObject.read fieldVals) fields)
                         Nothing
                         Nothing
   where
@@ -76,8 +77,8 @@ scan table key (Just recordCount) =
             let collected =
                     (Vector.fromList .
                      collect . List.sortBy (compare `on` fst) . HM.toList)
-                        valTable
-            return $ KVResponse SCAN Nothing (Just collected) Nothing
+                        $ valTable
+            return $ KVResponse SCAN Nothing (Just $ fmap LazyObject.read collected) Nothing
   where
     collect [] = []
     collect a@((k, _):xs)
@@ -87,32 +88,23 @@ scan table key (Just recordCount) =
 update :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 update table key Nothing = update table key $ Just HM.empty
 update tableId key (Just values) = do
-  s@KVSState{_cache=cache} <- get
-  let table = case HM.lookup tableId cache of { (Just t) -> t; Nothing -> HM.empty }
-  let vals' = case HM.lookup key table of
-              Nothing -> values
-              (Just vals) -> HM.union values vals
-  let table' = HM.insert key vals' table
+  table <- use $ cache . at tableId . non mempty
+  let table' = at key . non mempty . lazyO %~ HM.union values $ table
   InOut.store tableId table'
   return $ KVResponse UPDATE (Just HM.empty) Nothing Nothing
 
 insert :: (DB.DB_Iface a) => T.Text -> T.Text -> Maybe (HM.HashMap T.Text T.Text) -> StateT (KVSState a) IO KVResponse
 insert table key Nothing = insert table key $ Just HM.empty
 insert tableId key (Just values) = do
-  s@KVSState{_cache=cache} <- get
-  let table' = case HM.lookup tableId cache of
-                  (Just table) -> table
-                  Nothing -> error "invariant broken"
+  table <- use $ cache . at tableId . non mempty
+  let table' = at key ?~ newChanged values $ table
   InOut.store tableId table'
   return $ KVResponse INSERT (Just HM.empty) Nothing Nothing
 
 -- TODO The delete doesn't actually work ... I don't know why sebastian didn't implement it
 delete :: (DB.DB_Iface a) => T.Text -> T.Text -> StateT (KVSState a) IO KVResponse
 delete tableId key = do
-  s@KVSState{_cache=cache} <- get
-  case HM.lookup tableId cache of
-        (Just table) -> InOut.store tableId $ HM.delete key table
-        Nothing -> return ()
+  cache . ix tableId . at key .= Nothing
   return $ KVResponse DELETE (Just HM.empty) Nothing Nothing
 
 serve :: HasCache s m => KVRequest -> m KVResponse

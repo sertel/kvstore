@@ -8,8 +8,15 @@ import           Data.ByteString.Lazy
 import           Data.Maybe
 import           GHC.Generics
 import           Control.DeepSeq
+import LazyObject
 
 import           Debug.Trace
+
+mkStatelessSer :: (Table -> ByteString) -> Serialization
+mkStatelessSer f = Serialization (\() tbl -> (f tbl, ())) ()
+
+mkStatelessDeser :: (ByteString -> Table) -> Deserialization
+mkStatelessDeser f = Deserialization (\() tbl -> (f tbl, ())) ()
 
 serialize :: Serialization -> Table -> (Serialization, ByteString)
 serialize (Serialization ser s) tbl = let (bs, s') = ser s tbl in (Serialization ser s', bs)
@@ -17,14 +24,11 @@ serialize (Serialization ser s) tbl = let (bs, s') = ser s tbl in (Serialization
 deserialize :: Deserialization -> ByteString -> (Deserialization, Table)
 deserialize (Deserialization de s) bs = let (tbl, s') = de s bs in (Deserialization de s', tbl)
 
+jsonDecodeThrowing :: AE.FromJSON a => ByteString -> a
+jsonDecodeThrowing = either error id . AE.eitherDecode
+
 jsonSer :: Serialization
-jsonSer = Serialization
-  { _serialize = \() tbl -> (AE.encode tbl, ())
-  , _serState = ()
-  }
+jsonSer = mkStatelessSer (AE.encode . fmap LazyObject.read)
 
 jsonDeSer :: Deserialization
-jsonDeSer = Deserialization
-  { _deserialize = \() bs -> (fromMaybe (error $ "impossible!" ++ show bs) $ AE.decode bs, ())
-  , _deSerState = ()
-  }
+jsonDeSer = mkStatelessDeser (fmap newChanged . jsonDecodeThrowing)

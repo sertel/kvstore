@@ -17,8 +17,10 @@ import GHC.Generics
 import           Control.DeepSeq
 import           Control.Lens
 
+import LazyObject
+
 type Fields = Map.HashMap T.Text T.Text
-type Table = Map.HashMap T.Text Fields
+type Table = Map.HashMap T.Text (LazyObject Fields)
 type KVStore = Map.HashMap T.Text Table
 
 data Serialization = forall state. NFData state => Serialization

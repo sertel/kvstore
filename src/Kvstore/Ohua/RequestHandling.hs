@@ -11,6 +11,8 @@ import qualified Data.ByteString.Lazy    as BS
 import           Data.Maybe
 import           Control.Monad.State
 import           Control.Monad.IO.Class
+import Control.Lens
+import LazyObject
 
 import           KeyValueStore_Iface
 import           Kvservice_Types
@@ -49,16 +51,8 @@ calculateUpdate ::
     -> HM.HashMap T.Text T.Text
     -> StateT Stateless IO Table
 calculateUpdate cache tableId key values =
-    let table =
-            case HM.lookup tableId cache of
-                (Just t) -> t
-                Nothing -> HM.empty
-        vals' =
-            case HM.lookup key table of
-                Nothing -> values
-                (Just vals) -> HM.union values vals
-        table' = HM.insert key vals' table
-     in return table'
+    let table = cache ^. at tableId . non mempty
+    in return $ at key . non mempty . lazyO %~ HM.union values $ table
 
 calculateInsert ::
        KVStore
@@ -67,10 +61,8 @@ calculateInsert ::
     -> HM.HashMap T.Text T.Text
     -> StateT Stateless IO Table
 calculateInsert cache tableId key values =
-    return $
-    case HM.lookup tableId cache of
-        (Just table) -> HM.insert key values table
-        Nothing -> HM.singleton key values
+    let table = cache ^. at tableId . non mempty
+     in return $ at key ?~ newChanged values $ table
 
 calculateDelete ::
        KVStore
@@ -79,10 +71,7 @@ calculateDelete ::
     -> HM.HashMap T.Text T.Text
     -> StateT Stateless IO Table
 calculateDelete cache tableId key values =
-    return $
-    case HM.lookup tableId cache of
-        (Just table) -> HM.insert key values table
-        Nothing -> HM.singleton key values
+    return $ (at key .~ Nothing) (cache ^. at tableId . non mempty)
 
 -- serializeTable :: Table -> StateT Serialization IO BS.ByteString
 -- serializeTable table = do

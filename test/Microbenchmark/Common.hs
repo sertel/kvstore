@@ -19,6 +19,7 @@ import Kvstore.InputOutput (store)
 import Kvstore.KVSTypes
 import Named
 import Named.Internal (Param(Param))
+import LazyObject
 
 import ServiceConfig
 import Kvstore.Serialization
@@ -72,8 +73,8 @@ randomBounded :: (MonadRandom m, Enum a, Bounded a) => m a
 randomBounded = randomEnum ! #lowerBound minBound ! #upperBound maxBound
 
 
-initState :: Bool -> IO (KVSState MockDB)
-initState useEncryption = do
+initState :: "lazySerialization" :! Bool -> "useEncryption" :! Bool -> IO (KVSState MockDB)
+initState (Arg lazySerialization) (Arg useEncryption) = do
     db <- newIORef HM.empty
     (enc, dec) <-
         if useEncryption
@@ -85,13 +86,16 @@ initState useEncryption = do
             (makeNoWait db) -- latency is 0 for loading the DB and then
                           -- we set it for the requests
             -- jsonSer
-            binarySerialization
+            ser
             -- jsonDeSer
-            binaryDeserialization
+            deser
             zlibComp
             zlibDecomp
             enc
             dec
+  where
+    (ser, deser) | lazySerialization = (lazyBinarySerialization, lazyBinaryDeserialization)
+                 | otherwise = (binarySerialization, binaryDeserialization)
 
 type RawWritePipeline = [(T.Text, Table)] -> StateT (KVSState MockDB) IO ()
 
@@ -111,7 +115,7 @@ genTables (Arg keyCount) (Arg fieldCount) (Arg tableCount) =
         (T.pack $ tableTemplate i,) . HM.fromList <$>
         replicateM keyCount genKVPair
     genKVPair =
-        curry (bimap (T.pack . keyTemplate) HM.fromList) <$> rInt <*>
+        curry (bimap (T.pack . keyTemplate) (newChanged . HM.fromList)) <$> rInt <*>
         replicateM fieldCount genFields
     genFields =
         curry (bimap (T.pack . fieldTemplate) (T.pack . valueTemplate)) <$> rInt <*>

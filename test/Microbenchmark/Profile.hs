@@ -101,7 +101,7 @@ testEachAction replications = do
                 liftIO $
                     atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
                 pure res
-        s <- initState True
+        s <- initState ! #lazySerialization False ! #useEncryption True
         flip runStateT s $ do
             loadDB ! #numKeys 10 ! #numTables 100 ! defaults
             let ?execRequests = execWithCollectStats "insert"
@@ -123,7 +123,7 @@ profileBatchDefaults = def
 profileBatch :: BatchConfig -> IO ()
 profileBatch BatchConfig {..} = do
     setNumCapabilities threadCount
-    s <- initState True
+    s <- initState ! #useEncryption useEncryption ! #lazySerialization lazySerialization
     s' <-
         flip execStateT s $
         loadDB ! #numTables numTables ! #numKeys keyCount ! #numFields numFields
