@@ -22,9 +22,15 @@ import           Debug.Trace
 
 useStrictness :: Bool
 useStrictness = True
+{-# INLINE useStrictness #-}
 
 forceA :: (Applicative f, NFData a) => a -> f a
 forceA a = a `deepseq` pure a
+{-# INLINE forceA #-}
+
+seqA :: (Applicative f) => a -> f a
+seqA a = a `seq` pure a
+{-# INLINE seqA #-}
 
 withForceA :: (Monad m, NFData a) => m a -> m a
 withForceA = (forceA =<<)
@@ -32,6 +38,7 @@ withForceA = (forceA =<<)
 withStrictness :: (Monad m, NFData a) => m a -> m a
 withStrictness | useStrictness = withForceA
                | otherwise = id
+{-# INLINE withStrictness #-}
 
 forceLazyByteString :: BS.ByteString -> ()
 forceLazyByteString = BS.foldrChunks deepseq ()
@@ -40,6 +47,7 @@ withForceByteString :: Monad m => m BS.ByteString -> m BS.ByteString
 withForceByteString bs
     | useStrictness = bs >>= \bs' -> forceLazyByteString bs' `deepseq` pure bs'
     | otherwise = bs
+{-# INLINE withForceByteString #-}
 
 loadTableSF :: (DB.DB_Iface a) => a -> T.Text -> StateT Stateless IO (Maybe BS.ByteString)
 loadTableSF db tableId =
@@ -49,7 +57,7 @@ loadTableSF db tableId =
         KVSState {_storage = db}
 
 withForceWHNF :: Monad m => m a -> m a
-withForceWHNF m = m >>= \x -> x `seq` pure x
+withForceWHNF = (>>= seqA)
 
 deserializeTableSF :: BS.ByteString -> StateT Deserialization IO Table
 deserializeTableSF d = do

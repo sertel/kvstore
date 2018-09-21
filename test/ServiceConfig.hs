@@ -64,7 +64,7 @@ make db readDelay writeDelay = do
       adjust i = round $ (realToFrac i / realToFrac cost :: Double) * 10000
       wd = adjust writeDelay
       rd = adjust readDelay
-  hPrintf stderr "Calculated a read delay of %d and a write delay of %d" rd wd
+  hPrintf stderr "Calculated a read delay of %d and a write delay of %d\n" rd wd
   pure $ MockDB db rd wd
 
 wait_sins :: Word64 -> Int -> IO Float

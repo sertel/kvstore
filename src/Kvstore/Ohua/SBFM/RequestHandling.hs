@@ -65,7 +65,12 @@ pureUnitSf = pure'
 pureUnitSfLazy :: a -> StateT () IO a
 pureUnitSfLazy = pure
 
-writeback :: (DB.DB_Iface db, Typeable db) => Var KVStore -> Var db -> Var (Set.HashSet T.Text) -> ASTM [Dynamic] (Var [()])
+writeback ::
+       (DB.DB_Iface db, Typeable db)
+    => Var KVStore
+    -> Var db
+    -> Var (Set.HashSet T.Text)
+    -> ASTM [Dynamic] (Var [()])
 writeback store db touched = do
     touchedList <-
         liftWithIndexNamed
