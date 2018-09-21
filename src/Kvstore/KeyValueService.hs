@@ -46,12 +46,12 @@ foldWritesIntoCacheS l = foldlM integrateWrite mempty
                 case mvalues of
                     Just values ->
                         case op of
-                            UPDATE -> tableL . ix key . lazyO %= (values `Map.union`)
+                            UPDATE -> tableL . at key . non mempty . lazyO %= (values `Map.union`)
                             INSERT -> tableL . at key .= Just (newChanged values)
                             other ->
                                 error $ "invalid operation in fold writes " ++
                                 show other
-                    Nothing -> return ()
+                    Nothing -> error "Write had no values"
         return $ Set.insert tableId touched
       where
         tableL = l . at tableId . non mempty

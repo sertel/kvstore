@@ -40,6 +40,7 @@ import MBConfig
 import Statistics.Sample (mean)
 
 import Debug.Trace
+import LazyObject as L
 
 import Microbenchmark.Common
 
@@ -193,7 +194,11 @@ runMultipleBatches BatchConfig { useEncryption = useEncryption
 benchMain :: IO ()
 benchMain = do
     initializeTime
+    --L.enableStatCollection
     conf <- either error id . AE.eitherDecode <$> BS.hGetContents stdin
     BS.putStr . AE.encode =<<
         let ?execRequests = execFn (systemVersion conf)
-         in runMultipleBatches conf
+         in do
+          res <- runMultipleBatches conf
+          L.printLazySerUsage
+          pure res
