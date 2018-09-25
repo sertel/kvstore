@@ -13,11 +13,12 @@ import Control.Lens hiding (argument)
 import Control.Monad.Random
 import Control.Monad.State (evalStateT, execStateT, modify, runStateT)
 import Data.Aeson (eitherDecode, encode)
-import qualified Data.ByteString.Lazy as BS (readFile, writeFile)
+import qualified Data.ByteString.Lazy as BS (readFile, writeFile, putStrLn)
 import Data.IORef
 import qualified Data.Map as Map
 import Data.Semigroup
 import Data.Word (Word64)
+import qualified Data.Text as T
 import Kvstore.KVSTypes
 import Named
 import Options.Applicative
@@ -78,15 +79,14 @@ avg l = sum l `div` fromIntegral (length l)
 
 testEachAction :: Int -> IO ()
 testEachAction replications = do
-    results
+    stats
         --replicateM replications
          <-
         runTest
-    let stats = snd results
-    BS.writeFile "stat-results" (encode stats)
+    BS.writeFile "stat-results" (encode $ HM.fromList stats)
   where
     runTest = do
-        statVar <- initStatCollection
+        statVar <- newIORef mempty
         let execWithCollectStats statname reqs = do
                 modify (cache .~ mempty)
                 liftIO performGC
@@ -96,7 +96,7 @@ testEachAction replications = do
                 F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
                 let stats' = toStat "setup/force-result" [OpCycle 0 0 0 0 forceDone] : stats
                 liftIO $
-                    atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
+                    atomicModifyIORef statVar ((, ()) . ((statname :: T.Text, stats') :))
                 pure res
         s <- initState ! #lazySerialization False ! #useEncryption True
         flip runStateT s $ do
@@ -109,7 +109,7 @@ testEachAction replications = do
              in updateEntry "table-0" "key-0" "field-0" "value-1"
             let ?execRequests = execWithCollectStats "delete"
              in deleteEntry "table-0" "key-0"
-        getStats statVar
+        readIORef statVar
 
 profileBatchDefaults :: BatchConfig
 profileBatchDefaults = def
@@ -124,10 +124,10 @@ profileBatch BatchConfig {..} = do
     s' <-
         flip execStateT s $
         loadDB ! #numTables numTables ! #numKeys keyCount ! #numFields numFields
-    stats <-
+    [stats] <-
         flip evalStateT s' $ do
             calculateDelay ! #readDelay readDelay ! #writeDelay writeDelay
-            -- disabling running multiple for now
+            -- disabling running multiple batches for now
             -- replicateM batchCount $ do
             id $ do
                 requests <- liftIO $ workload batchSize bmState
@@ -137,9 +137,9 @@ profileBatch BatchConfig {..} = do
                 clock <- liftIO F.startPrecise
                 forceA_ responses
                 F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
-                let forceStat = toStat [OpStat 0 0 0 0 forceDone]
+                let forceStat = toStat "setup/force-result" [OpCycle 0 0 0 0 forceDone]
                 pure $ forceStat : stats
-    BS.putStrLn $ encode $ head stats
+    BS.putStrLn $ encode stats
   where
     bmState =
         reqBenchmarkState

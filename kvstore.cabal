@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 84d2c1268fb19eafead3748a7f1a6c3ce4471ae0fd9fdebff73658d2614378d3
+-- hash: 8273e3eff1510e639305fda36e211ece6f3be33cd679e2eb8cdbc7cf4f63078e
 
 name:           kvstore
 version:        0.1.0.0
@@ -133,12 +133,14 @@ executable microbench
       Crypto
       Requests
       ServiceConfig
+      Data.Statistics.Chart
       Microbenchmark.Common
       Microbenchmark.Pipeline
       Microbenchmark.KVStore
       Microbenchmark.Profile
   hs-source-dirs:
-      test
+      service-config
+      microbench
   ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -O2 -rtsopts
   build-depends:
       MonadRandom
@@ -149,17 +151,21 @@ executable microbench
     , bytestring
     , cereal
     , cereal-text
+    , chart-unit
     , containers
     , criterion
     , cryptonite
     , deepseq
     , foundation
+    , generic-lens
+    , generic-lens-labels
     , hashable
     , kvstore
     , lens
     , memory
     , mtl
     , named
+    , ohua-core
     , optparse-applicative
     , random
     , rdtsc
@@ -176,17 +182,13 @@ test-suite kvstore-test
   type: exitcode-stdio-1.0
   main-is: KvserviceTest.hs
   other-modules:
-      CorrectnessTests
       Crypto
-      Microbenchmark
-      Microbenchmark.Common
-      Microbenchmark.KVStore
-      Microbenchmark.Pipeline
-      Microbenchmark.Profile
       Requests
       ServiceConfig
+      CorrectnessTests
       Paths_kvstore
   hs-source-dirs:
+      service-config
       test
   ghc-options: -dsuppress-type-applications -dsuppress-coercions -dsuppress-module-prefixes -dsuppress-idinfo -threaded -rtsopts -with-rtsopts=-N
   build-depends:

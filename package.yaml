@@ -71,6 +71,7 @@ _microbench_fields: &microbench-fields
     - Crypto
     - Requests
     - ServiceConfig
+    - Data.Statistics.Chart
     - Microbenchmark.Common
     - Microbenchmark.Pipeline
     - Microbenchmark.KVStore
@@ -94,7 +95,11 @@ _microbench_fields: &microbench-fields
     - named
     - criterion
     - foundation
-    source-dirs: test
+    - chart-unit
+    - generic-lens
+    - generic-lens-labels
+    - ohua-core
+    source-dirs: [service-config, microbench]
 
 executables:
   microbench:
@@ -136,7 +141,7 @@ executables:
 tests:
   kvstore-test:
     main: KvserviceTest.hs
-    source-dirs: test
+    source-dirs: [service-config, test]
     ghc-options:
     - -threaded
     - -rtsopts

@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, CPP #-}
 module LazyObject
     ( LazyObject
     , read
@@ -6,6 +6,9 @@ module LazyObject
     , new
     , newChanged
     , encodeObject
+    , Encoder
+    , Decoder
+    , Encoded
     , lazyO
     , printLazySerUsage
     , enableStatCollection
@@ -41,7 +44,13 @@ instance NFData o => NFData (LazyObject o) where
 
 instance Monoid a => Monoid (LazyObject a) where
   mempty = newChanged mempty
+
+#if MIN_VERSION_base(4,11,0)
+instance Semigroup a => Semigroup (LazyObject a) where
+  a <> b = newChanged $ read a <> read b
+#else
   a `mappend` b = newChanged $ read a `mappend` read b
+#endif
 
 instance Eq a => Eq (LazyObject a) where
   (==) = (==) `on` read
