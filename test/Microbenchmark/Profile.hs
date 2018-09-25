@@ -12,8 +12,8 @@ import Control.Concurrent (setNumCapabilities)
 import Control.Lens hiding (argument)
 import Control.Monad.Random
 import Control.Monad.State (evalStateT, execStateT, modify, runStateT)
-import Data.Aeson (eitherDecode)
-import qualified Data.ByteString.Lazy as BS (readFile)
+import Data.Aeson (eitherDecode, encode)
+import qualified Data.ByteString.Lazy as BS (readFile, writeFile)
 import Data.IORef
 import qualified Data.Map as Map
 import Data.Semigroup
@@ -28,6 +28,8 @@ import Text.Printf
 import qualified Data.Vector as V
 import Data.List (nub)
 import qualified Data.HashMap.Strict as HM
+import Monad.StreamsBasedFreeMonad (enableStatCollection)
+import Data.Statistics
 
 import qualified Kvstore.Ohua.SBFM.KeyValueService as KVS
 import Kvservice_Types
@@ -76,20 +78,15 @@ avg l = sum l `div` fromIntegral (length l)
 
 testEachAction :: Int -> IO ()
 testEachAction replications = do
-    results <-
-        replicateM replications runTest
-    let stats =
-            fmap
-                (fmap avg)
-                (Map.unionsWith (Map.unionWith mappend) $
-                 map (fmap $ fmap pure) results :: Map.Map String (Map.Map _ [Word64]))
-    writeFile
-        "stat-results"
-        (show $
-         second (fmap (first show) . Map.toList) <$> Map.toList stats)
+    results
+        --replicateM replications
+         <-
+        runTest
+    let stats = snd results
+    BS.writeFile "stat-results" (encode stats)
   where
     runTest = do
-        statVar <- newIORef mempty
+        statVar <- initStatCollection
         let execWithCollectStats statname reqs = do
                 modify (cache .~ mempty)
                 liftIO performGC
@@ -97,7 +94,7 @@ testEachAction replications = do
                 clock <- liftIO F.startPrecise
                 forceA_ res
                 F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
-                let stats' = Map.insert "setup/force-result" forceDone stats
+                let stats' = toStat "setup/force-result" [OpCycle 0 0 0 0 forceDone] : stats
                 liftIO $
                     atomicModifyIORef statVar ((, ()) . ((statname, stats') :))
                 pure res
@@ -112,7 +109,7 @@ testEachAction replications = do
              in updateEntry "table-0" "key-0" "field-0" "value-1"
             let ?execRequests = execWithCollectStats "delete"
              in deleteEntry "table-0" "key-0"
-        Map.fromList <$> readIORef statVar
+        getStats statVar
 
 profileBatchDefaults :: BatchConfig
 profileBatchDefaults = def
@@ -130,7 +127,9 @@ profileBatch BatchConfig {..} = do
     stats <-
         flip evalStateT s' $ do
             calculateDelay ! #readDelay readDelay ! #writeDelay writeDelay
-            replicateM batchCount $ do
+            -- disabling running multiple for now
+            -- replicateM batchCount $ do
+            id $ do
                 requests <- liftIO $ workload batchSize bmState
                 forceA_ requests
                 liftIO performGC
@@ -138,14 +137,9 @@ profileBatch BatchConfig {..} = do
                 clock <- liftIO F.startPrecise
                 forceA_ responses
                 F.NanoSeconds forceDone <- liftIO $ F.stopPrecise clock
-                pure $ Map.insert "setup/force-result" forceDone stats
-    print
-        ([ ( "benchmark"
-           , map (first show) $
-             Map.toList $
-             fmap avg $
-             Map.unionsWith mappend $ map (fmap (pure :: a -> [a])) stats)
-         ] :: [(String, [(String, Word64)])])
+                let forceStat = toStat [OpStat 0 0 0 0 forceDone]
+                pure $ forceStat : stats
+    BS.putStrLn $ encode $ head stats
   where
     bmState =
         reqBenchmarkState
@@ -155,10 +149,13 @@ profileBatch BatchConfig {..} = do
             (pure <$> requestSelection)
 
 profileMain :: ProfileType -> IO ()
-profileMain (Batch conf) =
-    maybe
+profileMain t = do
+  enableStatCollection
+  case t of
+    (Batch conf) ->
+      maybe
         (pure profileBatchDefaults)
         (fmap (either error id . eitherDecode) . BS.readFile)
         conf >>=
-    profileBatch
-profileMain (Requests reps) = testEachAction reps
+      profileBatch
+    (Requests reps) -> testEachAction reps

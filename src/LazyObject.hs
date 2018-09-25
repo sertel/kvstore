@@ -47,6 +47,7 @@ instance Eq a => Eq (LazyObject a) where
   (==) = (==) `on` read
 
 collectStatsRef = unsafePerformIO $ newIORef False
+{-# NOINLINE collectStatsRef #-}
 
 collectStats = unsafePerformIO $ readIORef collectStatsRef
 
@@ -54,15 +55,21 @@ enableStatCollection = writeIORef collectStatsRef True
 
 evaluations = unsafePerformIO $ newIORef (0 :: Word)
 lazySerializes = unsafePerformIO $ newIORef (0 :: Word)
-reportEvaluation | collectStats = \o -> unsafePerformIO $ do
-                     atomicModifyIORef evaluations $ (,()) . succ
-                     return o
-                 | otherwise = id
+reportEvaluation
+    | collectStats =
+        \o ->
+            unsafePerformIO $ do
+                atomicModifyIORef evaluations $ (, ()) . succ
+                return o
+    | otherwise = id
 
-reportSerializtion | collectStats = \w -> unsafePerformIO $ do
-                       atomicModifyIORef lazySerializes $ (,()) . succ
-                       return w
-                   | otherwise = id
+reportSerializtion
+    | collectStats =
+        \w ->
+            unsafePerformIO $ do
+                atomicModifyIORef lazySerializes $ (, ()) . succ
+                return w
+    | otherwise = id
 
 printLazySerUsage :: IO ()
 printLazySerUsage

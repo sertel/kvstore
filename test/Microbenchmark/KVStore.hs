@@ -200,5 +200,5 @@ benchMain = do
         let ?execRequests = execFn (systemVersion conf)
          in do
           res <- runMultipleBatches conf
-          L.printLazySerUsage
+          --L.printLazySerUsage
           pure res

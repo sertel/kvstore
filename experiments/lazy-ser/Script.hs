@@ -13,12 +13,12 @@ import Control.Monad
 
 confs =
     [ def
-        { keyCount = 70
+        { keyCount = 50
         , batchCount = 5
-        , batchSize = 70
+        , batchSize = 80
         , useEncryption = True
-        , numTables = 100
-        , numFields = 70
+        , numTables = 30
+        , numFields = 150
         , preloadCache = False
         , threadCount = c
         , systemVersion = v
@@ -27,7 +27,7 @@ confs =
         , requestSelection = Nothing
         , lazySerialization = lazy
         }
-    | lazy <- [True, False]
+    | lazy <- [True]
     , c <- [1, 2, 4]
     , v <- [Functional, Ohua_SBFM, Ohua_FBM]
     ]

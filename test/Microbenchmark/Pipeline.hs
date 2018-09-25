@@ -150,28 +150,19 @@ fbmWritePipeline tables =
     storeIdx = 2
     encIdx = 3
 
-runners = [ ("pure", pureWritePipeline)
+runners =
+    [ ("pure", pureWritePipeline)
             -- Options:
             -- flip evalStateT (0::Int) . --> needs runtime option -qm
             -- runChanM .
             -- runParIO .
-           , ( "sbfm-chan", do liftIO .
-                                 writeFile "stats" .
-                                 show .
-                                 pure @[] .
-                                 ("pipeline", ) . map (first show) . Map.toList <=<
-                                 sbfmWritePipeline runChanM )
+    , ("sbfm-chan", void . sbfmWritePipeline runChanM)
             -- ,
             -- FIXME fails with "thread blocked indefinitely on an MVar operation"
-           , ( "sbfm-par", do liftIO .
-                                 writeFile "stats" .
-                                 show .
-                                 pure @[] .
-                                 ("pipeline", ) . map (first show) . Map.toList <=<
-                                 sbfmWritePipeline runParIO )
-           , ("fbm", fbmWritePipeline)
-           , ("default", pureWritePipeline)
-           ]
+    , ("sbfm-par", void . sbfmWritePipeline runParIO)
+    , ("fbm", fbmWritePipeline)
+    , ("default", pureWritePipeline)
+    ]
 
 testPipeline ::
         "numEntries" :! Int
